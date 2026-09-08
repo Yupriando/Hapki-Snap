@@ -1,127 +1,114 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HappySnap — live wall</title>
+<title>Hapki Snap — Live Wall</title>
 <link rel="stylesheet" href="style.css">
 <style>
   html, body{ height: 100%; overflow: hidden; }
 
   .wall-shell{
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
   }
 
   .wall-header{
     display: flex;
-    align-items: center;
+    align-items: baseline;
     justify-content: space-between;
-    padding: clamp(14px, 2.2vh, 26px) clamp(16px, 3vw, 40px) 4px;
+    padding: clamp(14px, 2.2vh, 28px) clamp(16px, 3vw, 44px) 0;
     flex: 0 0 auto;
   }
+  .wall-title-block{ display: flex; flex-direction: column; }
   .wall-title{
     font-family: var(--font-display);
-    font-size: clamp(18px, 2.6vh, 28px);
-    font-weight: 500;
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    font-size: clamp(22px, 3.6vh, 36px);
     margin: 0;
+    line-height: 1;
   }
-  .wall-title em{ font-style: italic; color: var(--flash); }
+  .wall-title span{ color: var(--flash); }
+  .belt-stripe{ margin-top: 8px; }
   .wall-meta{
     display: flex;
     align-items: center;
     gap: 10px;
     color: var(--graphite);
-    font-size: clamp(12px, 1.4vh, 14px);
+    font-size: clamp(12px, 1.5vh, 15px);
   }
   .live-dot{
     width: 8px; height: 8px; border-radius: 50%;
     background: var(--flash);
     animation: pulse 1.6s ease-in-out infinite;
   }
-  @keyframes pulse{
-    0%, 100%{ opacity: 1; }
-    50%{ opacity: 0.3; }
-  }
+  @keyframes pulse{ 0%, 100%{ opacity: 1; } 50%{ opacity: 0.3; } }
 
-  /* ---------------- Carousel rows ---------------- */
+  /* ---------------- Ticker rows ---------------- */
   .rows{
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    gap: clamp(10px, 1.8vh, 22px);
-    padding: clamp(6px, 1vh, 16px) 0;
+    gap: clamp(8px, 1.6vh, 20px);
+    padding: clamp(10px, 1.6vh, 22px) 0;
   }
   .row-viewport{
+    flex: 1;
+    min-height: 0;
+    position: relative;
     overflow: hidden;
-    white-space: nowrap;
-    width: 100%;
     mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
     -webkit-mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
   }
   .row-track{
-    display: inline-flex;
-    gap: clamp(12px, 1.8vw, 28px);
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: clamp(10px, 1.6vw, 26px);
     will-change: transform;
-    animation-timing-function: linear;
-    animation-iteration-count: infinite;
-  }
-  @keyframes scroll-left{
-    from{ transform: translateX(0); }
-    to{ transform: translateX(-50%); }
-  }
-  @keyframes scroll-right{
-    from{ transform: translateX(-50%); }
-    to{ transform: translateX(0); }
   }
 
   .tile{
-    display: inline-block;
     position: relative;
+    height: 78%;
+    aspect-ratio: 4 / 3;
     flex: 0 0 auto;
     background: var(--paper);
-    padding: clamp(5px, 0.6vw, 10px) clamp(5px, 0.6vw, 10px) clamp(20px, 2.6vh, 32px);
-    /* row height adapts to viewport height so 3 rows always fit */
-    height: calc((100vh - 130px) / 3.4);
-    width: calc(((100vh - 130px) / 3.4) * 1.32);
-    max-width: 46vw;
+    padding: clamp(4px, 0.6vw, 9px) clamp(4px, 0.6vw, 9px) clamp(16px, 2.6vh, 28px);
   }
-  .tile img{
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }
+  .tile img{ width: 100%; height: 100%; object-fit: cover; display: block; }
   .tile .cap{
     position: absolute;
-    bottom: clamp(4px, 0.6vh, 8px);
-    left: 10px;
-    right: 10px;
+    bottom: clamp(3px, 0.5vh, 7px);
+    left: 9px;
+    right: 9px;
     font-family: var(--font-display);
-    font-size: clamp(11px, 1.4vh, 15px);
+    letter-spacing: 0.02em;
+    font-size: clamp(11px, 1.7vh, 18px);
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tile.fresh{ animation: freshpop 0.6s cubic-bezier(0.2,0.8,0.2,1); }
+  .tile.fresh{ animation: freshpop 0.5s cubic-bezier(0.2,0.8,0.2,1); }
   @keyframes freshpop{
-    0%{ opacity: 0; transform: scale(0.8) translateY(10px); }
-    100%{ opacity: 1; transform: scale(1) translateY(0); }
+    0%{ opacity: 0; transform: scale(0.82); }
+    100%{ opacity: 1; transform: scale(1); }
   }
 
-  /* Fewer / shorter rows on narrow or short screens so tiles don't
-     get squeezed into slivers on phones and small tablets. */
+  /* Fewer rows on narrow or short screens: remaining rows use the
+     freed-up space automatically since they're flex:1. */
   @media (max-width: 700px){
     .row-viewport:nth-child(3){ display: none; }
-    .tile{ height: calc((100vh - 110px) / 2.4); }
   }
   @media (max-height: 480px) and (orientation: landscape){
     .row-viewport:nth-child(3){ display: none; }
-    .tile{ height: calc((100vh - 90px) / 2.2); }
   }
 
   .empty-state{
@@ -136,9 +123,10 @@
   }
   .empty-state .big{
     font-family: var(--font-display);
-    font-size: clamp(22px, 4vh, 32px);
+    letter-spacing: 0.01em;
+    font-size: clamp(24px, 4.5vh, 38px);
     color: var(--paper);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
 </style>
 </head>
@@ -146,10 +134,13 @@
 
 <div class="wall-shell">
   <div class="wall-header">
-    <h1 class="wall-title">Happy<em>Snap</em> — live</h1>
+    <div class="wall-title-block">
+      <h1 class="wall-title">HAPKI<span>SNAP</span> — LIVE</h1>
+      <div class="belt-stripe"><span></span><span></span></div>
+    </div>
     <div class="wall-meta">
       <span class="live-dot"></span>
-      <span id="countText" class="frame-counter">0 foto</span>
+      <span id="countText" class="frame-counter">0 photos</span>
     </div>
   </div>
 
@@ -160,37 +151,40 @@
   </div>
 
   <div id="emptyState" class="empty-state" style="display:none;">
-    <p class="big">Belum ada foto</p>
-    <p>Ambil foto pertama lewat halaman kamera, dan dia bakal muncul di sini.</p>
+    <p class="big">No photos yet</p>
+    <p>Take the first photo from the camera page and it'll show up here.</p>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <script>
-  const MAX_TRACKED = 90;
-  const ROW_SPEED = 42; // px per second, kept consistent across all rows
+  // ============================================================
+  // Ticker-style carousel: photos flow in from the right edge and
+  // exit at the left, continuously, like a news ticker. New photos
+  // are appended live to the end of a row's queue, so they arrive
+  // in order from the right rather than the wall jumping/resetting.
+  // ============================================================
 
-  // Each row scrolls a different direction/speed multiple so the
-  // wall feels alive rather than three identical conveyor belts.
-  const ROW_CONFIG = [
-    { dir: 'scroll-left',  speedMult: 1.0 },
-    { dir: 'scroll-right', speedMult: 0.85 },
-    { dir: 'scroll-left',  speedMult: 1.15 }
-  ];
-
-  let photos = [];          // newest first, overall
-  const knownIds = new Set();
-  const rowBuckets = [[], [], []]; // photos distributed round-robin across rows
+  const NUM_ROWS = 3;
+  const SPEED_PX_PER_SEC = 55;
+  const BUFFER_MULTIPLIER = 1.6; // keep this many viewport-widths of content queued ahead
 
   const countText = document.getElementById('countText');
   const emptyState = document.getElementById('emptyState');
   const rowsEl = document.getElementById('rows');
-  const tracks = [
-    document.getElementById('track0'),
-    document.getElementById('track1'),
-    document.getElementById('track2')
-  ];
+
+  const rows = [0, 1, 2].map(i => ({
+    viewport: document.querySelectorAll('.row-viewport')[i],
+    track: document.getElementById('track' + i),
+    queue: [],       // [{ el, photo }] left-to-right DOM order
+    sourcePool: [],  // unique photos assigned to this row, cycled for filler
+    fillCursor: 0,
+    offset: 0
+  }));
+
+  let totalPhotoCount = 0;
+  const knownIds = new Set();
 
   function escapeHtml(str){
     const div = document.createElement('div');
@@ -199,8 +193,8 @@
   }
 
   function updateVisibility(){
-    const hasPhotos = photos.length > 0;
-    countText.textContent = `${photos.length} foto`;
+    const hasPhotos = totalPhotoCount > 0;
+    countText.textContent = `${totalPhotoCount} photo${totalPhotoCount === 1 ? '' : 's'}`;
     emptyState.style.display = hasPhotos ? 'none' : 'flex';
     rowsEl.style.display = hasPhotos ? 'flex' : 'none';
   }
@@ -209,63 +203,84 @@
     const div = document.createElement('div');
     div.className = 'tile' + (isFresh ? ' fresh' : '');
     div.innerHTML = `
-      <img src="${photo.photo_url}" alt="foto dari ${escapeHtml(photo.username)}" loading="lazy">
+      <img src="${photo.photo_url}" alt="photo from ${escapeHtml(photo.username)}" loading="lazy">
       <div class="cap">${escapeHtml(photo.username)}</div>
     `;
     return div;
   }
 
-  function rebuildRow(rowIndex, freshId){
-    const track = tracks[rowIndex];
-    const list = rowBuckets[rowIndex];
-    track.style.animation = 'none';
-    track.innerHTML = '';
-    if (list.length === 0) return;
-
-    const doubled = list.concat(list);
-    doubled.forEach(photo => track.appendChild(buildTile(photo, photo.id === freshId)));
-
-    const cfg = ROW_CONFIG[rowIndex];
-    requestAnimationFrame(() => {
-      const fullWidth = track.scrollWidth / 2;
-      const speed = ROW_SPEED * cfg.speedMult;
-      const duration = Math.max(fullWidth / speed, 6);
-      track.style.animation = `${cfg.dir} ${duration}s linear infinite`;
-    });
+  function appendTile(row, photo, isFresh){
+    const el = buildTile(photo, isFresh);
+    row.track.appendChild(el);
+    row.queue.push({ el, photo });
   }
 
-  function redistributeRows(freshId){
-    rowBuckets[0] = [];
-    rowBuckets[1] = [];
-    rowBuckets[2] = [];
-    photos.forEach((p, i) => rowBuckets[i % 3].push(p));
-    rebuildRow(0, freshId);
-    rebuildRow(1, freshId);
-    rebuildRow(2, freshId);
+  function isRowVisible(row){
+    return row.viewport.offsetParent !== null;
+  }
+
+  function ensureBuffer(row){
+    if (row.sourcePool.length === 0) return;
+    const viewportWidth = row.viewport.clientWidth || 0;
+    if (viewportWidth === 0) return;
+
+    // Keep adding filler (cycling through this row's known photos)
+    // until there's a healthy buffer of width queued ahead on screen.
+    let guard = 0;
+    while (guard++ < 40){
+      const viewportRect = row.viewport.getBoundingClientRect();
+      const trackRect = row.track.getBoundingClientRect();
+      const aheadWidth = trackRect.right - viewportRect.right;
+      if (aheadWidth > viewportWidth * BUFFER_MULTIPLIER) break;
+      const nextPhoto = row.sourcePool[row.fillCursor % row.sourcePool.length];
+      row.fillCursor++;
+      appendTile(row, nextPhoto, false);
+    }
+  }
+
+  function recycle(row){
+    if (row.queue.length === 0) return;
+    const viewportRect = row.viewport.getBoundingClientRect();
+    let guard = 0;
+    while (row.queue.length && guard++ < 40){
+      const firstEl = row.queue[0].el;
+      const rect = firstEl.getBoundingClientRect();
+      if (rect.right < viewportRect.left){
+        row.track.removeChild(firstEl);
+        row.queue.shift();
+      } else break;
+    }
+  }
+
+  function addPhotoToRow(row, photo, isFresh){
+    row.sourcePool.push(photo);
+    appendTile(row, photo, isFresh);
   }
 
   function addNewPhoto(photo){
     if (knownIds.has(photo.id)) return;
     knownIds.add(photo.id);
-    photos.unshift(photo);
-    if (photos.length > MAX_TRACKED){
-      const removed = photos.pop();
-      knownIds.delete(removed.id);
-    }
+    totalPhotoCount++;
     updateVisibility();
-    redistributeRows(photo.id);
+
+    const rowIndex = (totalPhotoCount - 1) % NUM_ROWS;
+    addPhotoToRow(rows[rowIndex], photo, true);
   }
 
   async function loadInitial(){
     try{
-      const initial = await fetchVisiblePhotos();
-      photos = initial.slice(0, MAX_TRACKED);
-      photos.forEach(p => knownIds.add(p.id));
+      const initial = await fetchVisiblePhotos(); // newest first
+      const oldestFirst = initial.slice().reverse();
+      oldestFirst.forEach(photo => {
+        knownIds.add(photo.id);
+        totalPhotoCount++;
+        const rowIndex = (totalPhotoCount - 1) % NUM_ROWS;
+        addPhotoToRow(rows[rowIndex], photo, false);
+      });
       updateVisibility();
-      redistributeRows(null);
     }catch(err){
       console.error(err);
-      countText.textContent = 'Gagal muat foto';
+      countText.textContent = 'Failed to load photos';
     }
   }
 
@@ -284,13 +299,26 @@
     }
   }, POLL_INTERVAL);
 
-  // Rows are sized with vh-based math; recompute the scroll timing
-  // (not just CSS) if the window is resized/rotated so speed stays right.
-  let resizeTimer = null;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => redistributeRows(null), 300);
-  });
+  // ---------------- main animation loop ----------------
+  let lastTs = null;
+  function tick(ts){
+    if (lastTs === null) lastTs = ts;
+    const dt = Math.min((ts - lastTs) / 1000, 0.1); // clamp to avoid big jumps on tab refocus
+    lastTs = ts;
+
+    rows.forEach(row => {
+      if (!isRowVisible(row)) return;
+      if (row.queue.length > 0){
+        row.offset -= SPEED_PX_PER_SEC * dt;
+        row.track.style.transform = `translateX(${row.offset}px)`;
+        recycle(row);
+      }
+      ensureBuffer(row);
+    });
+
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 
   loadInitial();
 </script>

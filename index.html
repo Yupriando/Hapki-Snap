@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HappySnap — masuk ke acara</title>
+<title>Hapki Snap — Check In</title>
 <link rel="stylesheet" href="style.css">
 <style>
   .landing-wrap{
@@ -20,35 +20,25 @@
     background: var(--ink-raised);
     border: 1px solid var(--line);
   }
-  .kicker{
-    font-size: 13px;
-    color: var(--graphite);
-    margin: 0 0 6px;
-  }
+  .kicker{ font-size: 13px; color: var(--graphite); margin: 0 0 6px; }
   h1{
     font-family: var(--font-display);
-    font-weight: 500;
-    font-size: 40px;
-    line-height: 1.05;
-    margin: 0 0 12px;
+    font-weight: 400;
+    font-size: 52px;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    margin: 0;
     color: var(--paper);
   }
-  h1 em{
-    font-style: italic;
-    color: var(--flash);
-  }
+  h1 span{ color: var(--flash); }
   .sub{
     color: var(--graphite);
     font-size: 15px;
     line-height: 1.5;
-    margin: 0 0 32px;
+    margin: 18px 0 32px;
     max-width: 34ch;
   }
-  .mode-toggle{
-    display: flex;
-    gap: 8px;
-    margin-bottom: 20px;
-  }
+  .mode-toggle{ display: flex; gap: 8px; margin-bottom: 20px; }
   .mode-btn{
     flex: 1;
     padding: 10px;
@@ -61,20 +51,11 @@
   .mode-btn.active{
     border-color: var(--flash);
     color: var(--paper);
-    background: rgba(255,61,87,0.08);
+    background: rgba(217,30,54,0.10);
   }
   #nameField{ margin-bottom: 8px; }
-  .hint{
-    font-size: 12px;
-    color: var(--graphite-dim);
-    margin: 0 0 24px;
-    min-height: 16px;
-  }
-  .next-btn{
-    width: 100%;
-    padding: 16px;
-    font-size: 16px;
-  }
+  .hint{ font-size: 12px; color: var(--graphite-dim); margin: 0 0 24px; min-height: 16px; }
+  .next-btn{ width: 100%; padding: 16px; font-size: 16px; }
 </style>
 </head>
 <body>
@@ -84,19 +65,20 @@
     <span class="vf-tl"></span><span class="vf-tr"></span>
     <span class="vf-bl"></span><span class="vf-br"></span>
 
-    <p class="kicker">acara malam ini</p>
-    <h1>Happy<em>Snap</em></h1>
-    <p class="sub">Ambil foto, dan itu langsung muncul di layar besar buat semua orang lihat. Siapa namamu?</p>
+    <p class="kicker">tonight's session</p>
+    <h1>HAPKI<span>SNAP</span></h1>
+    <div class="belt-stripe"><span></span><span></span></div>
+    <p class="sub">Take a shot and it instantly appears on the big screen for everyone to see. What's your name?</p>
 
     <div class="mode-toggle">
-      <button class="mode-btn active" id="modeNamed" type="button">Pakai nama</button>
-      <button class="mode-btn" id="modeAnon" type="button">Anonim</button>
+      <button class="mode-btn active" id="modeNamed" type="button">Use a name</button>
+      <button class="mode-btn" id="modeAnon" type="button">Stay anonymous</button>
     </div>
 
-    <input class="field" id="nameField" type="text" placeholder="Nama kamu" maxlength="24" autocomplete="off">
-    <p class="hint" id="hintText">Nama ini akan muncul di bawah fotomu di layar besar.</p>
+    <input class="field" id="nameField" type="text" placeholder="Your name" maxlength="24" autocomplete="off">
+    <p class="hint" id="hintText">This name will appear under your photo on the big screen.</p>
 
-    <button class="btn btn-primary next-btn" id="nextBtn" type="button">Lanjut ke kamera</button>
+    <button class="btn btn-primary next-btn" id="nextBtn" type="button">Continue to camera</button>
   </div>
 </div>
 
@@ -115,6 +97,8 @@
     modeAnon.classList.remove('active');
     nameField.style.display = 'block';
     hintText.style.display = 'block';
+    hintText.style.color = 'var(--graphite-dim)';
+    hintText.textContent = 'This name will appear under your photo on the big screen.';
     nameField.focus();
   });
 
@@ -123,7 +107,8 @@
     modeAnon.classList.add('active');
     modeNamed.classList.remove('active');
     nameField.style.display = 'none';
-    hintText.textContent = 'Namamu akan muncul sebagai "Anonymous" di layar besar.';
+    hintText.style.color = 'var(--graphite-dim)';
+    hintText.textContent = 'You\'ll appear as "Anonymous" on the big screen.';
   });
 
   nextBtn.addEventListener('click', () => {
@@ -132,13 +117,13 @@
       const typed = nameField.value.trim();
       if (!typed) {
         nameField.focus();
-        hintText.textContent = 'Isi dulu namanya, atau pilih Anonim.';
+        hintText.textContent = 'Enter a name, or choose Stay anonymous.';
         hintText.style.color = 'var(--flash)';
         return;
       }
       username = typed;
     }
-    sessionStorage.setItem('happysnap_username', username);
+    sessionStorage.setItem('hapkisnap_username', username);
     window.location.href = 'camera.html';
   });
 

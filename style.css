@@ -1,22 +1,25 @@
 /* =========================================================
-   SnapWall — shared design tokens & base styles
-   Theme: live event photo wall, camera-viewfinder motif
+   Hapki Snap — shared design tokens & base styles
+   Theme: martial-arts dojang energy meets a live photo wall.
+   Motif: viewfinder/focus brackets (precision) + a red/blue
+   "belt stripe" accent used as a recurring structural device.
    ========================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
 :root{
-  --ink: #121016;
-  --ink-raised: #1B1922;
-  --paper: #F3EEDF;
-  --flash: #FF3D57;
-  --flash-dim: #B72A3E;
-  --aperture: #FFD23F;
-  --graphite: #A6A2AF;
-  --graphite-dim: #6E6B78;
-  --line: #2C2A33;
+  --ink: #131214;
+  --ink-raised: #1C1B1F;
+  --paper: #F2EFE9;
+  --flash: #D91E36;        /* belt red */
+  --flash-dim: #A21528;
+  --aperture: #2557C7;     /* belt blue */
+  --aperture-dim: #1B3F99;
+  --graphite: #9C9BA6;
+  --graphite-dim: #6B6A75;
+  --line: #2A2A30;
 
-  --font-display: 'Fraunces', Georgia, serif;
+  --font-display: 'Bebas Neue', 'Arial Narrow', sans-serif;
   --font-ui: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
 
   --radius: 2px;
@@ -36,43 +39,51 @@ html, body{
 
 body{
   background-image:
-    radial-gradient(ellipse at 20% -10%, rgba(255,61,87,0.08), transparent 55%),
-    radial-gradient(ellipse at 90% 110%, rgba(255,210,63,0.06), transparent 50%);
+    radial-gradient(ellipse at 15% -10%, rgba(217,30,54,0.10), transparent 55%),
+    radial-gradient(ellipse at 90% 110%, rgba(37,87,199,0.10), transparent 50%);
   min-height: 100vh;
 }
 
 a{ color: inherit; }
+button{ font-family: var(--font-ui); cursor: pointer; }
+::selection{ background: var(--flash); color: var(--paper); }
 
-button{
-  font-family: var(--font-ui);
-  cursor: pointer;
-}
-
-::selection{ background: var(--flash); color: var(--ink); }
-
-/* ---------- Viewfinder corner brackets ----------
-   Recurring structural device: every "frame" in the app
-   (the entry card, the camera view, a photo tile) is held
-   inside four L-shaped brackets, like a camera AF frame. */
-.viewfinder{
-  position: relative;
-}
-.viewfinder::before,
-.viewfinder::after,
-.vf-tl, .vf-tr, .vf-bl, .vf-br{
+/* ---------- Viewfinder / focus-reticle corner brackets ----------
+   Recurring structural device: every "frame" in the app is held
+   inside four L-shaped brackets, part camera focus point, part
+   target-precision motif fitting the martial-arts theme. */
+.viewfinder{ position: relative; }
+.viewfinder .vf-tl, .viewfinder .vf-tr, .viewfinder .vf-bl, .viewfinder .vf-br{
   content: '';
   position: absolute;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-color: var(--flash);
   border-style: solid;
   border-width: 0;
   pointer-events: none;
 }
-.viewfinder .vf-tl{ top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; }
-.viewfinder .vf-tr{ top: -1px; right: -1px; border-top-width: 2px; border-right-width: 2px; }
-.viewfinder .vf-bl{ bottom: -1px; left: -1px; border-bottom-width: 2px; border-left-width: 2px; }
-.viewfinder .vf-br{ bottom: -1px; right: -1px; border-bottom-width: 2px; border-right-width: 2px; }
+.viewfinder .vf-tl{ top: -1px; left: -1px; border-top-width: 3px; border-left-width: 3px; }
+.viewfinder .vf-tr{ top: -1px; right: -1px; border-top-width: 3px; border-right-width: 3px; }
+.viewfinder .vf-bl{ bottom: -1px; left: -1px; border-bottom-width: 3px; border-left-width: 3px; }
+.viewfinder .vf-br{ bottom: -1px; right: -1px; border-bottom-width: 3px; border-right-width: 3px; }
+
+/* ---------- Belt stripe (red + blue) ----------
+   A small recurring flourish under headlines, referencing the
+   two-tone belt/taegeuk color pairing without reproducing any
+   national or organizational emblem. */
+.belt-stripe{
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+.belt-stripe span{
+  height: 4px;
+  width: 34px;
+  border-radius: 2px;
+}
+.belt-stripe span:first-child{ background: var(--flash); }
+.belt-stripe span:last-child{ background: var(--aperture); }
 
 /* ---------- Buttons ---------- */
 .btn{
@@ -96,10 +107,10 @@ button{
 .btn-primary{
   background: var(--flash);
   border-color: var(--flash);
-  color: var(--ink);
+  color: var(--paper);
   font-weight: 600;
 }
-.btn-primary:hover{ background: #ff5468; border-color: #ff5468; }
+.btn-primary:hover{ background: #ef2c46; border-color: #ef2c46; }
 
 .btn-ghost{
   border-color: transparent;
@@ -119,25 +130,9 @@ button{
   font-size: 15px;
 }
 .field::placeholder{ color: var(--graphite-dim); }
-.field:focus{
-  outline: none;
-  border-color: var(--flash);
-}
+.field:focus{ outline: none; border-color: var(--flash); }
 
 /* ---------- Utility ---------- */
-.eyebrow-plain{
-  color: var(--graphite);
-  font-size: 13px;
-  letter-spacing: 0.01em;
-}
-.frame-counter{
-  font-variant-numeric: tabular-nums;
-  color: var(--graphite);
-  font-size: 13px;
-}
-.divider-line{
-  height: 1px;
-  background: var(--line);
-  border: none;
-  margin: 24px 0;
-}
+.eyebrow-plain{ color: var(--graphite); font-size: 13px; letter-spacing: 0.01em; }
+.frame-counter{ font-variant-numeric: tabular-nums; color: var(--graphite); font-size: 13px; }
+.divider-line{ height: 1px; background: var(--line); border: none; margin: 24px 0; }

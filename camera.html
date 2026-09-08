@@ -1,20 +1,20 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HappySnap — kamera</title>
+<title>Hapki Snap — Camera</title>
 <link rel="stylesheet" href="style.css">
 <style>
   body{ overflow: hidden; }
   .stage{
     position: relative;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
   }
 
-  /* ---- top bar ---- */
   .topbar{
     display: flex;
     align-items: center;
@@ -28,26 +28,22 @@
     align-items: center;
     gap: 8px;
     padding: 8px 14px;
-    background: rgba(18,16,22,0.7);
+    background: rgba(19,18,20,0.7);
     border: 1px solid var(--line);
     font-size: 13px;
     color: var(--paper);
     backdrop-filter: blur(6px);
   }
-  .name-tag .dot{
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--flash);
-  }
+  .name-tag .dot{ width: 6px; height: 6px; border-radius: 50%; background: var(--flash); }
   .exit-link{
     font-size: 13px;
     color: var(--graphite);
     padding: 8px 14px;
-    background: rgba(18,16,22,0.7);
+    background: rgba(19,18,20,0.7);
     border: 1px solid var(--line);
     backdrop-filter: blur(6px);
   }
 
-  /* ---- camera viewport ---- */
   .cam-wrap{
     flex: 1;
     min-height: 0;
@@ -56,16 +52,20 @@
     overflow: hidden;
     background: #000;
   }
-  video, canvas.overlay{
+  video{
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transform: scaleX(-1); /* mirror, feels natural for selfie */
+    transform: scaleX(-1);
   }
-  canvas.overlay{
+  .color-wash{
+    position: absolute;
+    inset: 0;
     pointer-events: none;
+    background: transparent;
+    mix-blend-mode: normal;
   }
   .flash-overlay{
     position: absolute;
@@ -74,9 +74,7 @@
     opacity: 0;
     pointer-events: none;
   }
-  .flash-overlay.firing{
-    animation: flashfire 0.35s ease-out;
-  }
+  .flash-overlay.firing{ animation: flashfire 0.35s ease-out; }
   @keyframes flashfire{
     0%{ opacity: 0.9; }
     100%{ opacity: 0; }
@@ -93,35 +91,15 @@
     padding: 24px;
     z-index: 4;
   }
-  .face-hint{
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    font-size: 12px;
-    padding: 5px 10px;
-    background: rgba(18,16,22,0.7);
-    color: var(--aperture);
-    border: 1px solid var(--line);
-    z-index: 4;
-    display: none;
-  }
-  .face-hint.show{ display: block; }
 
-  /* ---- filter panel ---- */
-  .filter-panel{
-    flex: 0 0 auto;
-    padding: 10px 20px 4px;
-  }
-  .filter-row-label{
-    font-size: 12px;
-    color: var(--graphite-dim);
-    margin: 6px 0 6px 2px;
-  }
+  .filter-panel{ flex: 0 0 auto; padding: 12px 20px 4px; }
+  .filter-row-label{ font-size: 12px; color: var(--graphite-dim); margin: 4px 0 6px 2px; }
   .filter-strip{
     display: flex;
     gap: 10px;
     overflow-x: auto;
     padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
   }
   .filter-strip::-webkit-scrollbar{ display: none; }
   .filter-chip{
@@ -134,27 +112,17 @@
     white-space: nowrap;
   }
   .filter-chip.active{
-    color: var(--ink);
-    background: var(--aperture);
-    border-color: var(--aperture);
-    font-weight: 600;
-  }
-  .filter-chip.ar-chip.active{
+    color: var(--paper);
     background: var(--flash);
     border-color: var(--flash);
-    color: var(--ink);
-  }
-  .filter-chip:disabled{
-    opacity: 0.4;
-    cursor: not-allowed;
+    font-weight: 600;
   }
 
-  /* ---- shutter row ---- */
   .shutter-row{
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 10px 20px 28px;
+    padding: 10px 20px max(20px, env(safe-area-inset-bottom));
     flex: 0 0 auto;
   }
   .shutter-btn{
@@ -178,7 +146,6 @@
   .shutter-btn:active .inner{ transform: scale(0.85); }
   .shutter-btn:disabled .inner{ background: var(--graphite-dim); }
 
-  /* ---- review overlay ---- */
   .review-overlay{
     position: fixed;
     inset: 0;
@@ -204,7 +171,7 @@
     bottom: 12px;
     left: 12px;
     font-family: var(--font-display);
-    font-size: 16px;
+    font-size: 20px;
     color: var(--ink);
   }
   .review-actions{
@@ -215,12 +182,7 @@
     max-width: 460px;
   }
   .review-actions .btn{ flex: 1; }
-  .upload-status{
-    margin-top: 14px;
-    font-size: 13px;
-    color: var(--graphite);
-    min-height: 18px;
-  }
+  .upload-status{ margin-top: 14px; font-size: 13px; color: var(--graphite); min-height: 18px; }
 </style>
 </head>
 <body>
@@ -230,46 +192,21 @@
 <div class="stage">
   <div class="topbar">
     <div class="name-tag"><span class="dot"></span><span id="userTag">Anonymous</span></div>
-    <a class="exit-link" href="index.html">Ganti nama</a>
+    <a class="exit-link" href="index.html">Change name</a>
   </div>
 
   <div class="cam-wrap viewfinder" id="camWrap">
     <span class="vf-tl"></span><span class="vf-tr"></span>
     <span class="vf-bl"></span><span class="vf-br"></span>
     <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlayCanvas" class="overlay"></canvas>
-    <div class="face-hint" id="faceHint">Menyiapkan filter wajah...</div>
+    <div class="color-wash" id="colorWash"></div>
     <div class="flash-overlay" id="flashOverlay"></div>
-    <div class="cam-status" id="camStatus">Meminta akses kamera...</div>
+    <div class="cam-status" id="camStatus">Requesting camera access...</div>
   </div>
 
   <div class="filter-panel">
-    <p class="filter-row-label">Warna</p>
-    <div class="filter-strip" id="colorStrip">
-      <button class="filter-chip active" data-css="none">Normal</button>
-      <button class="filter-chip" data-css="grayscale(1) contrast(1.1)">B&amp;W</button>
-      <button class="filter-chip" data-css="sepia(0.35) saturate(1.4) contrast(1.05)">Warm</button>
-      <button class="filter-chip" data-css="saturate(1.2) hue-rotate(-8deg) contrast(1.05) brightness(1.05)">Cool</button>
-      <button class="filter-chip" data-css="contrast(1.2) saturate(0.85) brightness(0.95) sepia(0.15)">Film</button>
-      <button class="filter-chip" data-css="saturate(1.6) contrast(1.15)">Vivid</button>
-      <button class="filter-chip" data-css="contrast(0.85) brightness(1.1) saturate(0.7)">Fade</button>
-      <button class="filter-chip" data-css="grayscale(1) contrast(1.4) brightness(0.9)">Noir</button>
-      <button class="filter-chip" data-css="sepia(0.25) saturate(1.5) brightness(1.08) hue-rotate(-6deg)">Golden Hour</button>
-      <button class="filter-chip" data-css="saturate(1.8) hue-rotate(200deg) contrast(1.2)">Cyberpunk</button>
-      <button class="filter-chip" data-css="saturate(0.6) brightness(1.15) contrast(0.9)">Pastel</button>
-      <button class="filter-chip" data-css="hue-rotate(280deg) saturate(2) contrast(1.1)">Infrared</button>
-      <button class="filter-chip" data-css="sepia(0.4) contrast(1.1) brightness(0.95) saturate(0.8)">Vintage</button>
-      <button class="filter-chip" data-css="grayscale(0.6) hue-rotate(180deg) saturate(1.4)">Mono Biru</button>
-    </div>
-
-    <p class="filter-row-label">Aksesoris</p>
-    <div class="filter-strip" id="arStrip">
-      <button class="filter-chip ar-chip active" data-ar="none">Tanpa aksesoris</button>
-      <button class="filter-chip ar-chip" data-ar="glasses-square" disabled>Kacamata Kotak</button>
-      <button class="filter-chip ar-chip" data-ar="glasses-round" disabled>Kacamata Bulat</button>
-      <button class="filter-chip ar-chip" data-ar="mustache" disabled>Kumis</button>
-      <button class="filter-chip ar-chip" data-ar="party-hat" disabled>Topi Pesta</button>
-    </div>
+    <p class="filter-row-label">Filters</p>
+    <div class="filter-strip" id="filterStrip"></div>
   </div>
 
   <div class="shutter-row">
@@ -279,34 +216,57 @@
 
 <div class="review-overlay" id="reviewOverlay">
   <div class="review-frame">
-    <img id="reviewImg" alt="hasil foto">
+    <img id="reviewImg" alt="captured photo">
     <div class="review-caption" id="reviewCaption"></div>
   </div>
   <div class="review-actions">
-    <button class="btn" id="retakeBtn">Ambil ulang</button>
-    <button class="btn btn-primary" id="sendBtn">Kirim ke wall</button>
+    <button class="btn" id="retakeBtn">Retake</button>
+    <button class="btn btn-primary" id="sendBtn">Post to wall</button>
   </div>
   <p class="upload-status" id="uploadStatus"></p>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script>
-  const username = sessionStorage.getItem('happysnap_username') || 'Anonymous';
+  const username = sessionStorage.getItem('hapkisnap_username') || 'Anonymous';
   document.getElementById('userTag').textContent = username;
   document.getElementById('reviewCaption').textContent = username;
 
+  // Each filter combines a standard CSS/canvas color-adjustment
+  // filter with an optional color-wash + blend mode, which is what
+  // gives the more Snapchat-like duotone/glow looks (a flat filter()
+  // alone can't do that; a blended color layer can).
+  const FILTERS = [
+    { label: 'Original',      css: 'none' },
+    { label: 'B&W',           css: 'grayscale(1) contrast(1.1)' },
+    { label: 'Noir',          css: 'grayscale(1) contrast(1.4) brightness(0.9)' },
+    { label: 'Warm',          css: 'sepia(0.35) saturate(1.4) contrast(1.05)' },
+    { label: 'Cool',          css: 'saturate(1.2) hue-rotate(-8deg) contrast(1.05) brightness(1.05)' },
+    { label: 'Vivid',         css: 'saturate(1.6) contrast(1.15)' },
+    { label: 'Fade',          css: 'contrast(0.85) brightness(1.1) saturate(0.7)' },
+    { label: 'Vintage',       css: 'sepia(0.4) contrast(1.1) brightness(0.95) saturate(0.8)' },
+    { label: 'Golden Hour',   css: 'sepia(0.25) saturate(1.5) brightness(1.08) hue-rotate(-6deg)' },
+    { label: 'Cyberpunk',     css: 'saturate(1.8) hue-rotate(200deg) contrast(1.2)' },
+    { label: 'Pastel',        css: 'saturate(0.6) brightness(1.15) contrast(0.9)' },
+    { label: 'Infrared',      css: 'hue-rotate(280deg) saturate(2) contrast(1.1)' },
+    { label: 'Mono Blue',     css: 'grayscale(0.6) hue-rotate(180deg) saturate(1.4)' },
+    { label: 'Sunset Glow',   css: 'saturate(1.2) contrast(1.05)', wash: 'rgba(255,120,40,0.35)', blend: 'overlay' },
+    { label: 'Neon Nights',   css: 'contrast(1.15) saturate(1.3) brightness(0.95)', wash: 'rgba(180,40,220,0.30)', blend: 'screen' },
+    { label: 'Arctic Frost',  css: 'saturate(1.1) brightness(1.05)', wash: 'rgba(80,180,255,0.30)', blend: 'soft-light' },
+    { label: 'Duotone Red',   css: 'grayscale(1) contrast(1.1)', wash: 'rgba(217,30,54,0.55)', blend: 'color' },
+    { label: 'Duotone Blue',  css: 'grayscale(1) contrast(1.1)', wash: 'rgba(37,87,199,0.55)', blend: 'color' },
+    { label: 'Dreamy Glow',   css: 'brightness(1.1) contrast(0.85) saturate(1.2)', wash: 'rgba(255,255,255,0.25)', blend: 'screen' },
+    { label: 'Retro Film',    css: 'sepia(0.15) contrast(1.1) saturate(0.9)', wash: 'rgba(255,210,80,0.2)', blend: 'multiply' }
+  ];
+
   const video = document.getElementById('video');
-  const overlayCanvas = document.getElementById('overlayCanvas');
-  const overlayCtx = overlayCanvas.getContext('2d');
+  const colorWash = document.getElementById('colorWash');
   const camStatus = document.getElementById('camStatus');
-  const faceHint = document.getElementById('faceHint');
   const shutterBtn = document.getElementById('shutterBtn');
   const flashOverlay = document.getElementById('flashOverlay');
   const canvas = document.getElementById('captureCanvas');
-  const colorStrip = document.getElementById('colorStrip');
-  const arStrip = document.getElementById('arStrip');
+  const filterStrip = document.getElementById('filterStrip');
 
   const reviewOverlay = document.getElementById('reviewOverlay');
   const reviewImg = document.getElementById('reviewImg');
@@ -314,36 +274,33 @@
   const sendBtn = document.getElementById('sendBtn');
   const uploadStatus = document.getElementById('uploadStatus');
 
-  let currentFilterCss = 'none';
-  let currentFilterLabel = 'none';
-  let currentArMode = 'none';
+  let currentFilter = FILTERS[0];
   let capturedBlob = null;
-  let lastLandmarks = null;
-  let arReady = false;
-  let arLoopRunning = false;
 
-  // ---------------- color filter selection ----------------
-  colorStrip.addEventListener('click', (e) => {
+  // build filter chips
+  FILTERS.forEach((f, i) => {
+    const chip = document.createElement('button');
+    chip.className = 'filter-chip' + (i === 0 ? ' active' : '');
+    chip.textContent = f.label;
+    chip.dataset.index = i;
+    filterStrip.appendChild(chip);
+  });
+
+  function applyFilterToPreview(f){
+    video.style.filter = f.css;
+    colorWash.style.background = f.wash || 'transparent';
+    colorWash.style.mixBlendMode = f.blend || 'normal';
+  }
+
+  filterStrip.addEventListener('click', (e) => {
     const chip = e.target.closest('.filter-chip');
     if (!chip) return;
-    colorStrip.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    filterStrip.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
-    currentFilterCss = chip.dataset.css;
-    currentFilterLabel = chip.textContent.trim();
-    video.style.filter = currentFilterCss;
+    currentFilter = FILTERS[Number(chip.dataset.index)];
+    applyFilterToPreview(currentFilter);
   });
 
-  // ---------------- AR filter selection ----------------
-  arStrip.addEventListener('click', (e) => {
-    const chip = e.target.closest('.filter-chip');
-    if (!chip || chip.disabled) return;
-    arStrip.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    currentArMode = chip.dataset.ar;
-    if (currentArMode === 'none') overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-  });
-
-  // ---------------- camera ----------------
   async function startCamera(){
     try{
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -351,191 +308,15 @@
         audio: false
       });
       video.srcObject = stream;
-      await new Promise(resolve => { video.onloadedmetadata = resolve; });
       camStatus.style.display = 'none';
       shutterBtn.disabled = false;
-      overlayCanvas.width = video.videoWidth;
-      overlayCanvas.height = video.videoHeight;
-      loadFaceModels();
     }catch(err){
-      camStatus.textContent = 'Gak bisa akses kamera. Izinkan akses kamera di browser, lalu refresh halaman ini.';
+      camStatus.textContent = "Can't access the camera. Please allow camera access in your browser, then refresh this page.";
       console.error(err);
     }
   }
   startCamera();
 
-  // ---------------- face-api model loading ----------------
-  async function loadFaceModels(){
-    faceHint.classList.add('show');
-    try{
-      const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js/weights';
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-        faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL)
-      ]);
-      arReady = true;
-      faceHint.classList.remove('show');
-      arStrip.querySelectorAll('.ar-chip[disabled]').forEach(c => c.disabled = false);
-      runDetectionLoop();
-    }catch(err){
-      console.error('face model load failed', err);
-      faceHint.textContent = 'Filter wajah gak tersedia (cek koneksi internet).';
-      setTimeout(() => faceHint.classList.remove('show'), 3500);
-    }
-  }
-
-  async function runDetectionLoop(){
-    if (arLoopRunning) return;
-    arLoopRunning = true;
-    const tick = async () => {
-      if (currentArMode !== 'none'){
-        try{
-          const result = await faceapi
-            .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 }))
-            .withFaceLandmarks(true);
-          overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-          if (result){
-            lastLandmarks = result.landmarks.positions;
-            drawAccessory(overlayCtx, lastLandmarks, currentArMode);
-          } else {
-            lastLandmarks = null;
-          }
-        }catch(err){ /* skip a frame silently */ }
-      } else {
-        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        lastLandmarks = null;
-      }
-      setTimeout(() => requestAnimationFrame(tick), 90); // ~10fps, plenty for a photobooth
-    };
-    tick();
-  }
-
-  // ---------------- accessory drawing (shared by preview + capture) ----------------
-  function avgPoint(points, indices){
-    let x = 0, y = 0;
-    indices.forEach(i => { x += points[i].x; y += points[i].y; });
-    return { x: x / indices.length, y: y / indices.length };
-  }
-  function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
-
-  function drawAccessory(ctx, pts, mode){
-    if (!pts) return;
-    const rightEye = avgPoint(pts, [36,37,38,39,40,41]);
-    const leftEye  = avgPoint(pts, [42,43,44,45,46,47]);
-    const eyeDist = dist(rightEye, leftEye);
-    const angle = Math.atan2(leftEye.y - rightEye.y, leftEye.x - rightEye.x);
-    const eyeMid = { x: (rightEye.x + leftEye.x) / 2, y: (rightEye.y + leftEye.y) / 2 };
-
-    ctx.save();
-
-    if (mode === 'glasses-square' || mode === 'glasses-round'){
-      const lensR = eyeDist * 0.34;
-      ctx.translate(eyeMid.x, eyeMid.y);
-      ctx.rotate(angle);
-      ctx.lineWidth = Math.max(3, eyeDist * 0.06);
-      ctx.strokeStyle = mode === 'glasses-round' ? '#D4AF37' : '#161616';
-      ctx.fillStyle = 'rgba(20,20,20,0.18)';
-
-      [-eyeDist/2, eyeDist/2].forEach(offsetX => {
-        ctx.beginPath();
-        if (mode === 'glasses-round'){
-          ctx.arc(offsetX, 0, lensR, 0, Math.PI * 2);
-        } else {
-          const s = lensR * 1.15;
-          roundRectPath(ctx, offsetX - s, -s, s * 2, s * 1.7, s * 0.2);
-        }
-        ctx.fill();
-        ctx.stroke();
-      });
-      // bridge
-      ctx.beginPath();
-      ctx.moveTo(-eyeDist/2 + lensR * 0.6, 0);
-      ctx.lineTo(eyeDist/2 - lensR * 0.6, 0);
-      ctx.stroke();
-      ctx.restore();
-      return;
-    }
-
-    if (mode === 'mustache'){
-      const mouthTop = avgPoint(pts, [50,51,52]);
-      const mouthLeft = pts[48];
-      const mouthRight = pts[54];
-      const mouthWidth = dist(mouthLeft, mouthRight);
-      const cy = mouthTop.y - mouthWidth * 0.28;
-      ctx.translate(mouthTop.x, cy);
-      ctx.rotate(angle);
-      ctx.fillStyle = '#2b1a12';
-      const w = mouthWidth * 0.85;
-      const h = mouthWidth * 0.32;
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.bezierCurveTo(w*0.15, -h*0.9, w*0.5, -h*0.6, w*0.62, h*0.15);
-      ctx.bezierCurveTo(w*0.5, -h*0.05, w*0.2, h*0.05, 0, h*0.1);
-      ctx.bezierCurveTo(-w*0.2, h*0.05, -w*0.5, -h*0.05, -w*0.62, h*0.15);
-      ctx.bezierCurveTo(-w*0.5, -h*0.6, -w*0.15, -h*0.9, 0, 0);
-      ctx.fill();
-      ctx.restore();
-      return;
-    }
-
-    if (mode === 'party-hat'){
-      const faceLeft = pts[0];
-      const faceRight = pts[16];
-      const faceWidth = dist(faceLeft, faceRight);
-      const browMid = avgPoint(pts, [19,24]);
-      const chin = pts[8];
-      const faceHeight = dist(browMid, chin);
-      const hatW = faceWidth * 0.55;
-      const hatH = faceHeight * 1.5;
-
-      ctx.translate(browMid.x, browMid.y - faceHeight * 0.15);
-      ctx.rotate(angle);
-
-      const grad = ctx.createLinearGradient(0, 0, 0, -hatH);
-      grad.addColorStop(0, '#FF3D57');
-      grad.addColorStop(1, '#FFD23F');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.moveTo(-hatW/2, 0);
-      ctx.lineTo(hatW/2, 0);
-      ctx.lineTo(0, -hatH);
-      ctx.closePath();
-      ctx.fill();
-
-      // pompom
-      ctx.beginPath();
-      ctx.fillStyle = '#F3EEDF';
-      ctx.arc(0, -hatH, hatW * 0.14, 0, Math.PI * 2);
-      ctx.fill();
-
-      // little stripes for texture
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = Math.max(2, hatW * 0.03);
-      for (let i = 1; i <= 3; i++){
-        const t = i / 4;
-        ctx.beginPath();
-        ctx.moveTo(-hatW/2 * (1-t), -hatH * t);
-        ctx.lineTo(hatW/2 * (1-t), -hatH * t);
-        ctx.stroke();
-      }
-      ctx.restore();
-      return;
-    }
-
-    ctx.restore();
-  }
-
-  function roundRectPath(ctx, x, y, w, h, r){
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.arcTo(x + w, y, x + w, y + h, r);
-    ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r);
-    ctx.arcTo(x, y, x + w, y, r);
-    ctx.closePath();
-  }
-
-  // ---------------- snap ----------------
   shutterBtn.addEventListener('click', () => {
     flashOverlay.classList.remove('firing');
     void flashOverlay.offsetWidth;
@@ -548,13 +329,17 @@
     const ctx = canvas.getContext('2d');
 
     ctx.save();
-    ctx.filter = currentFilterCss;
+    ctx.filter = currentFilter.css;
     ctx.translate(w, 0);
-    ctx.scale(-1, 1); // mirror to match preview; landmark coords already in this same unmirrored space
+    ctx.scale(-1, 1); // mirror to match preview
     ctx.drawImage(video, 0, 0, w, h);
     ctx.filter = 'none';
-    if (currentArMode !== 'none' && lastLandmarks){
-      drawAccessory(ctx, lastLandmarks, currentArMode);
+
+    if (currentFilter.wash){
+      ctx.globalCompositeOperation = currentFilter.blend || 'source-over';
+      ctx.fillStyle = currentFilter.wash;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = 'source-over';
     }
     ctx.restore();
 
@@ -575,11 +360,10 @@
     if (!capturedBlob) return;
     sendBtn.disabled = true;
     retakeBtn.disabled = true;
-    uploadStatus.textContent = 'Mengirim ke wall...';
+    uploadStatus.textContent = 'Sending to the wall...';
     try{
-      const filterMeta = currentArMode !== 'none' ? `${currentFilterLabel} + ${currentArMode}` : currentFilterLabel;
-      await uploadPhoto(capturedBlob, username, filterMeta);
-      uploadStatus.textContent = 'Terkirim! Foto kamu muncul di layar besar.';
+      await uploadPhoto(capturedBlob, username, currentFilter.label);
+      uploadStatus.textContent = 'Sent! Your photo is now on the big screen.';
       setTimeout(() => {
         reviewOverlay.classList.remove('show');
         capturedBlob = null;
@@ -588,7 +372,7 @@
       }, 1400);
     }catch(err){
       console.error(err);
-      uploadStatus.textContent = 'Gagal kirim. Cek koneksi, lalu coba lagi.';
+      uploadStatus.textContent = 'Failed to send. Check your connection and try again.';
       sendBtn.disabled = false;
       retakeBtn.disabled = false;
     }
