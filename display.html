@@ -21,6 +21,8 @@
     justify-content: space-between;
     padding: clamp(14px, 2.2vh, 28px) clamp(16px, 3vw, 44px) 0;
     flex: 0 0 auto;
+    z-index: 5;
+    position: relative;
   }
   .wall-title-block{ display: flex; flex-direction: column; }
   .wall-title{
@@ -47,79 +49,60 @@
   }
   @keyframes pulse{ 0%, 100%{ opacity: 1; } 50%{ opacity: 0.3; } }
 
-  /* ---------------- Ticker rows ---------------- */
-  .rows{
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: clamp(8px, 1.6vh, 20px);
-    padding: clamp(10px, 1.6vh, 22px) 0;
-  }
-  .row-viewport{
+  /* ---------------- Photo sphere ---------------- */
+  .sphere-wrap{
     flex: 1;
     min-height: 0;
     position: relative;
     overflow: hidden;
-    mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
   }
-  .row-track{
+  .sphere-stage{
     position: absolute;
-    top: 0; left: 0;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    gap: clamp(10px, 1.6vw, 26px);
-    will-change: transform;
+    inset: 0;
   }
-
-  .tile{
-    position: relative;
-    height: 78%;
-    aspect-ratio: 4 / 3;
-    flex: 0 0 auto;
+  .sphere-tile{
+    position: absolute;
+    top: 0;
+    left: 0;
     background: var(--paper);
-    padding: clamp(4px, 0.6vw, 9px) clamp(4px, 0.6vw, 9px) clamp(16px, 2.6vh, 28px);
+    padding: 5% 5% 20%;
+    will-change: transform, opacity;
+    pointer-events: none;
+    transition: filter 0.35s ease;
   }
-  .tile img{ width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tile .cap{
+  .sphere-tile img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .sphere-tile .cap{
     position: absolute;
-    bottom: clamp(3px, 0.5vh, 7px);
-    left: 9px;
-    right: 9px;
+    bottom: 8%;
+    left: 8%;
+    right: 8%;
     font-family: var(--font-display);
     letter-spacing: 0.02em;
-    font-size: clamp(11px, 1.7vh, 18px);
+    font-size: 11px;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tile.fresh{ animation: freshpop 0.5s cubic-bezier(0.2,0.8,0.2,1); }
-  @keyframes freshpop{
-    0%{ opacity: 0; transform: scale(0.82); }
-    100%{ opacity: 1; transform: scale(1); }
-  }
-
-  /* Fewer rows on narrow or short screens: remaining rows use the
-     freed-up space automatically since they're flex:1. */
-  @media (max-width: 700px){
-    .row-viewport:nth-child(3){ display: none; }
-  }
-  @media (max-height: 480px) and (orientation: landscape){
-    .row-viewport:nth-child(3){ display: none; }
-  }
+  .sphere-tile.empty{ opacity: 0.08 !important; }
+  .sphere-tile.pop{ filter: brightness(1.9); }
 
   .empty-state{
-    flex: 1;
-    display: flex;
+    position: absolute;
+    inset: 0;
+    display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
     color: var(--graphite);
     padding: 24px;
+    z-index: 4;
   }
   .empty-state .big{
     font-family: var(--font-display);
@@ -144,15 +127,12 @@
     </div>
   </div>
 
-  <div id="rows" class="rows">
-    <div class="row-viewport"><div class="row-track" id="track0"></div></div>
-    <div class="row-viewport"><div class="row-track" id="track1"></div></div>
-    <div class="row-viewport"><div class="row-track" id="track2"></div></div>
-  </div>
-
-  <div id="emptyState" class="empty-state" style="display:none;">
-    <p class="big">No photos yet</p>
-    <p>Take the first photo from the camera page and it'll show up here.</p>
+  <div class="sphere-wrap" id="sphereWrap">
+    <div class="sphere-stage" id="sphereStage"></div>
+    <div id="emptyState" class="empty-state">
+      <p class="big">No photos yet</p>
+      <p>Take the first photo from the camera page and it'll show up here.</p>
+    </div>
   </div>
 </div>
 
@@ -160,31 +140,50 @@
 <script src="supabase-client.js"></script>
 <script>
   // ============================================================
-  // Ticker-style carousel: photos flow in from the right edge and
-  // exit at the left, continuously, like a news ticker. New photos
-  // are appended live to the end of a row's queue, so they arrive
-  // in order from the right rather than the wall jumping/resetting.
+  // Photo sphere: a fixed number of "slots" are distributed evenly
+  // over a sphere (Fibonacci sphere distribution) and the whole
+  // sphere slowly spins. Slot *positions* never change, which is
+  // what avoids the old ticker's DOM-churn glitches entirely —
+  // only the *photo shown* in a slot changes, round-robin, as new
+  // photos arrive. New arrivals get a quick brightness "pop" so
+  // they're easy to spot on the rotating wall.
   // ============================================================
 
-  const NUM_ROWS = 3;
-  const SPEED_PX_PER_SEC = 55;
-  const BUFFER_MULTIPLIER = 1.6; // keep this many viewport-widths of content queued ahead
+  const SLOT_COUNT = 44;
+  const ROTATE_SPEED = 0.22;   // radians per second around the vertical axis
+  const TILT_AMOUNT = 0.20;    // gentle wobble, radians
+  const TILT_SPEED = 0.15;     // wobble cycles per second (angular)
 
   const countText = document.getElementById('countText');
   const emptyState = document.getElementById('emptyState');
-  const rowsEl = document.getElementById('rows');
+  const sphereWrap = document.getElementById('sphereWrap');
+  const sphereStage = document.getElementById('sphereStage');
 
-  const rows = [0, 1, 2].map(i => ({
-    viewport: document.querySelectorAll('.row-viewport')[i],
-    track: document.getElementById('track' + i),
-    queue: [],       // [{ el, photo }] left-to-right DOM order
-    sourcePool: [],  // unique photos assigned to this row, cycled for filler
-    fillCursor: 0,
-    offset: 0
-  }));
-
-  let totalPhotoCount = 0;
   const knownIds = new Set();
+  let totalPhotoCount = 0;
+  let assignCursor = 0;
+
+  // ---- build the fixed Fibonacci-sphere slot positions ----
+  function fibonacciSphere(n){
+    const pts = [];
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+    for (let i = 0; i < n; i++){
+      const yUnit = n === 1 ? 0 : 1 - (i / (n - 1)) * 2;
+      const radiusAtY = Math.sqrt(Math.max(0, 1 - yUnit * yUnit));
+      const theta = goldenAngle * i;
+      pts.push({ x: Math.cos(theta) * radiusAtY, y: yUnit, z: Math.sin(theta) * radiusAtY });
+    }
+    return pts;
+  }
+
+  const basePoints = fibonacciSphere(SLOT_COUNT);
+  const slots = basePoints.map(() => {
+    const el = document.createElement('div');
+    el.className = 'sphere-tile empty';
+    el.innerHTML = '<img alt=""><div class="cap"></div>';
+    sphereStage.appendChild(el);
+    return { el, img: el.querySelector('img'), cap: el.querySelector('.cap'), photo: null };
+  });
 
   function escapeHtml(str){
     const div = document.createElement('div');
@@ -192,102 +191,52 @@
     return div.innerHTML;
   }
 
-  function updateVisibility(){
-    const hasPhotos = totalPhotoCount > 0;
-    countText.textContent = `${totalPhotoCount} photo${totalPhotoCount === 1 ? '' : 's'}`;
-    emptyState.style.display = hasPhotos ? 'none' : 'flex';
-    rowsEl.style.display = hasPhotos ? 'flex' : 'none';
-  }
-
-  function buildTile(photo, isFresh){
-    const div = document.createElement('div');
-    div.className = 'tile' + (isFresh ? ' fresh' : '');
-    div.innerHTML = `
-      <img src="${photo.photo_url}" alt="photo from ${escapeHtml(photo.username)}" loading="lazy">
-      <div class="cap">${escapeHtml(photo.username)}</div>
-    `;
-    return div;
-  }
-
-  function appendTile(row, photo, isFresh){
-    const el = buildTile(photo, isFresh);
-    row.track.appendChild(el);
-    row.queue.push({ el, photo });
-  }
-
-  function isRowVisible(row){
-    return row.viewport.offsetParent !== null;
-  }
-
-  function ensureBuffer(row){
-    if (row.sourcePool.length === 0) return;
-    const viewportWidth = row.viewport.clientWidth || 0;
-    if (viewportWidth === 0) return;
-
-    // Keep adding filler (cycling through this row's known photos)
-    // until there's a healthy buffer of width queued ahead on screen.
-    let guard = 0;
-    while (guard++ < 40){
-      const viewportRect = row.viewport.getBoundingClientRect();
-      const trackRect = row.track.getBoundingClientRect();
-      const aheadWidth = trackRect.right - viewportRect.right;
-      if (aheadWidth > viewportWidth * BUFFER_MULTIPLIER) break;
-      const nextPhoto = row.sourcePool[row.fillCursor % row.sourcePool.length];
-      row.fillCursor++;
-      appendTile(row, nextPhoto, false);
+  function assignPhotoToSlot(photo, isFresh){
+    const slot = slots[assignCursor % slots.length];
+    assignCursor++;
+    slot.photo = photo;
+    slot.img.src = photo.photo_url;
+    slot.img.alt = `photo from ${escapeHtml(photo.username)}`;
+    slot.cap.textContent = photo.username;
+    slot.el.classList.remove('empty');
+    if (isFresh){
+      slot.el.classList.add('pop');
+      setTimeout(() => slot.el.classList.remove('pop'), 450);
     }
-  }
-
-  function recycle(row){
-    if (row.queue.length === 0) return;
-    const viewportRect = row.viewport.getBoundingClientRect();
-    let guard = 0;
-    while (row.queue.length && guard++ < 40){
-      const firstEl = row.queue[0].el;
-      const rect = firstEl.getBoundingClientRect();
-      if (rect.right < viewportRect.left){
-        row.track.removeChild(firstEl);
-        row.queue.shift();
-      } else break;
-    }
-  }
-
-  function addPhotoToRow(row, photo, isFresh){
-    row.sourcePool.push(photo);
-    appendTile(row, photo, isFresh);
   }
 
   function addNewPhoto(photo){
     if (knownIds.has(photo.id)) return;
     knownIds.add(photo.id);
     totalPhotoCount++;
-    updateVisibility();
-
-    const rowIndex = (totalPhotoCount - 1) % NUM_ROWS;
-    addPhotoToRow(rows[rowIndex], photo, true);
+    countText.textContent = `${totalPhotoCount} photo${totalPhotoCount === 1 ? '' : 's'}`;
+    emptyState.style.display = 'none';
+    assignPhotoToSlot(photo, true);
   }
 
   async function loadInitial(){
     try{
       const initial = await fetchVisiblePhotos(); // newest first
+      if (initial.length === 0){
+        emptyState.style.display = 'flex';
+        return;
+      }
+      emptyState.style.display = 'none';
       const oldestFirst = initial.slice().reverse();
       oldestFirst.forEach(photo => {
         knownIds.add(photo.id);
         totalPhotoCount++;
-        const rowIndex = (totalPhotoCount - 1) % NUM_ROWS;
-        addPhotoToRow(rows[rowIndex], photo, false);
+        assignPhotoToSlot(photo, false);
       });
-      updateVisibility();
+      countText.textContent = `${totalPhotoCount} photo${totalPhotoCount === 1 ? '' : 's'}`;
     }catch(err){
       console.error(err);
       countText.textContent = 'Failed to load photos';
     }
   }
 
-  // Realtime: instant updates when Supabase Realtime is enabled on the table.
   subscribeToNewPhotos((photo) => addNewPhoto(photo));
 
-  // Polling fallback: catches anything realtime misses.
   const POLL_INTERVAL = 8000;
   setInterval(async () => {
     try{
@@ -299,22 +248,59 @@
     }
   }, POLL_INTERVAL);
 
-  // ---------------- main animation loop ----------------
-  let lastTs = null;
-  function tick(ts){
-    if (lastTs === null) lastTs = ts;
-    const dt = Math.min((ts - lastTs) / 1000, 0.1); // clamp to avoid big jumps on tab refocus
-    lastTs = ts;
+  // ---------------- geometry / render loop ----------------
+  let cw = 0, ch = 0, cx = 0, cy = 0, radiusPx = 0, tileSize = 0, focal = 0;
 
-    rows.forEach(row => {
-      if (!isRowVisible(row)) return;
-      if (row.queue.length > 0){
-        row.offset -= SPEED_PX_PER_SEC * dt;
-        row.track.style.transform = `translateX(${row.offset}px)`;
-        recycle(row);
-      }
-      ensureBuffer(row);
-    });
+  function measure(){
+    const rect = sphereWrap.getBoundingClientRect();
+    cw = rect.width;
+    ch = rect.height;
+    cx = cw / 2;
+    cy = ch / 2;
+    radiusPx = Math.min(cw, ch) * 0.36;
+    tileSize = radiusPx * 0.34;
+    focal = radiusPx * 2.6;
+  }
+  measure();
+  window.addEventListener('resize', measure);
+
+  let startTs = null;
+  function tick(ts){
+    if (startTs === null) startTs = ts;
+    const t = (ts - startTs) / 1000;
+    const angle = t * ROTATE_SPEED;
+    const tiltX = Math.sin(t * TILT_SPEED) * TILT_AMOUNT;
+    const cosA = Math.cos(angle), sinA = Math.sin(angle);
+    const cosT = Math.cos(tiltX), sinT = Math.sin(tiltX);
+
+    for (let i = 0; i < slots.length; i++){
+      const b = basePoints[i];
+      // rotate around Y (spin)
+      const x1 = b.x * cosA + b.z * sinA;
+      const z1 = -b.x * sinA + b.z * cosA;
+      const y1 = b.y;
+      // gentle tilt around X (wobble, like a globe on a stand)
+      const y2 = y1 * cosT - z1 * sinT;
+      const z2 = y1 * sinT + z1 * cosT;
+      const x2 = x1;
+
+      const depth = focal - z2 * radiusPx;
+      const scale = focal / depth;
+      const screenX = cx + x2 * radiusPx * scale;
+      const screenY = cy - y2 * radiusPx * scale;
+      const dispSize = tileSize * scale;
+
+      const tNorm = (z2 + 1) / 2; // 0 = far back, 1 = near front
+      const opacity = 0.15 + tNorm * 0.85;
+      const zIndex = Math.round(tNorm * 1000);
+
+      const el = slots[i].el;
+      el.style.width = dispSize + 'px';
+      el.style.height = (dispSize * 0.78) + 'px';
+      el.style.transform = `translate(${screenX}px, ${screenY}px) translate(-50%, -50%)`;
+      el.style.opacity = opacity;
+      el.style.zIndex = zIndex;
+    }
 
     requestAnimationFrame(tick);
   }

@@ -43,6 +43,21 @@
     border: 1px solid var(--line);
     backdrop-filter: blur(6px);
   }
+  .topbar-right{ display: flex; gap: 8px; }
+  .flip-btn{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--paper);
+    padding: 8px 14px;
+    background: rgba(19,18,20,0.7);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(6px);
+    font-family: var(--font-ui);
+  }
+  .flip-btn:active{ transform: scale(0.96); }
+  .flip-btn svg{ width: 15px; height: 15px; }
 
   .cam-wrap{
     flex: 1;
@@ -58,7 +73,6 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transform: scaleX(-1);
   }
   .color-wash{
     position: absolute;
@@ -192,7 +206,13 @@
 <div class="stage">
   <div class="topbar">
     <div class="name-tag"><span class="dot"></span><span id="userTag">Anonymous</span></div>
-    <a class="exit-link" href="index.html">Change name</a>
+    <div class="topbar-right">
+      <button class="flip-btn" id="flipBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.2v-2a4 4 0 0 1 4-4h12.8M7 21.9l-4-4 4-4"/><path d="M21 11.8v2a4 4 0 0 1-4 4H4.2"/></svg>
+        Flip
+      </button>
+      <a class="exit-link" href="index.html">Change name</a>
+    </div>
   </div>
 
   <div class="cam-wrap viewfinder" id="camWrap">
@@ -274,8 +294,12 @@
   const sendBtn = document.getElementById('sendBtn');
   const uploadStatus = document.getElementById('uploadStatus');
 
+  const flipBtn = document.getElementById('flipBtn');
+
   let currentFilter = FILTERS[0];
   let capturedBlob = null;
+  let currentFacingMode = 'user';
+  let currentStream = null;
 
   // build filter chips
   FILTERS.forEach((f, i) => {
@@ -301,21 +325,43 @@
     applyFilterToPreview(currentFilter);
   });
 
-  async function startCamera(){
+  async function startCamera(facingMode){
+    if (currentStream){
+      currentStream.getTracks().forEach(track => track.stop());
+      currentStream = null;
+    }
+    camStatus.style.display = 'flex';
+    camStatus.textContent = 'Requesting camera access...';
+    shutterBtn.disabled = true;
     try{
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+        video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 960 } },
         audio: false
       });
+      currentStream = stream;
+      currentFacingMode = facingMode;
       video.srcObject = stream;
+      // Only mirror the front ("selfie") camera; the back camera
+      // should preview the same way it looks in real life.
+      video.style.transform = facingMode === 'user' ? 'scaleX(-1)' : 'none';
       camStatus.style.display = 'none';
       shutterBtn.disabled = false;
     }catch(err){
-      camStatus.textContent = "Can't access the camera. Please allow camera access in your browser, then refresh this page.";
       console.error(err);
+      if (facingMode === 'environment'){
+        camStatus.textContent = "Couldn't switch to the back camera on this device. Switching back to front camera...";
+        setTimeout(() => startCamera('user'), 1400);
+      } else {
+        camStatus.textContent = "Can't access the camera. Please allow camera access in your browser, then refresh this page.";
+      }
     }
   }
-  startCamera();
+  startCamera(currentFacingMode);
+
+  flipBtn.addEventListener('click', () => {
+    const next = currentFacingMode === 'user' ? 'environment' : 'user';
+    startCamera(next);
+  });
 
   shutterBtn.addEventListener('click', () => {
     flashOverlay.classList.remove('firing');
@@ -330,8 +376,10 @@
 
     ctx.save();
     ctx.filter = currentFilter.css;
-    ctx.translate(w, 0);
-    ctx.scale(-1, 1); // mirror to match preview
+    if (currentFacingMode === 'user'){
+      ctx.translate(w, 0);
+      ctx.scale(-1, 1); // mirror to match preview, front camera only
+    }
     ctx.drawImage(video, 0, 0, w, h);
     ctx.filter = 'none';
 

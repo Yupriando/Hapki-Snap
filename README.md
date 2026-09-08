@@ -58,35 +58,29 @@ The last several (Sunset Glow, Neon Nights, Arctic Frost, the two Duotones, Drea
 ```
 `wash` and `blend` are optional — omit both for a plain color-adjustment filter.
 
-## The live wall (display.html): a ticker-style carousel
+## The live wall (display.html): a rotating photo sphere
 
-Instead of one big photo or a static grid, the wall now shows **3 rows of photos scrolling continuously**, all moving the same direction: photos enter from the right edge and exit on the left, like a news ticker. New photos are appended live to the end of a row's queue, so they always arrive from the right in order — nothing jumps or resets.
+Photos are arranged over a slowly rotating sphere (using a Fibonacci-sphere point distribution, the same technique used for evenly spacing points on a globe), with a gentle wobble on top of the spin so it doesn't feel mechanical. Photos toward the front appear larger and fully bright; photos on the far side shrink and dim slightly, giving real depth.
 
-This is driven by a small JavaScript animation loop (not CSS keyframes), which:
-- Moves each row's track left at a constant speed every frame
-- Removes tiles once they've fully scrolled past the left edge (recycling)
-- Tops up each row from its own pool of assigned photos whenever there's too little content queued ahead, so the ticker never runs dry even with just one or two photos early in the event
+This uses a **fixed set of 44 "slots"** positioned once on the sphere — their positions never move. As new photos arrive, they're assigned round-robin into the next slot (replacing whatever was there before) with a quick brightness "pop" so they're easy to spot. This design is what fixed an earlier ticker-carousel bug where fast-arriving photos could visually glitch/overlap: since slots are fixed and only the *image inside* a slot changes, there's no more DOM insertion/removal racing with layout measurement on every frame.
 
-Fully responsive, without hard-coded viewport-height guesses:
-- Rows are sized with flexbox (`flex: 1` each), so they always fill the available height evenly on any device or window size
-- On narrow screens (phones, width < 700px) or short landscape screens, the third row is hidden automatically via a media query — the remaining two rows simply take the freed-up space
-- The animation loop measures real element positions every frame, so it stays accurate through window resizes and orientation changes without any special handling
+Fully responsive: the sphere's radius and tile size are computed from the container's own measured width/height (`getBoundingClientRect`), recalculated on resize/orientation change — so it scales correctly on phones, tablets, monitors, or a TV without hard-coded breakpoints.
 
 Auto-refresh still has two layers:
-1. **Realtime** (instant) via Supabase — requires the `photos` table to have replication enabled, which `schema.sql` already includes (`alter publication supabase_realtime add table photos;`).
+1. **Realtime** (instant) via Supabase — requires the `photos` table to have replication enabled, which `schema.sql` already includes.
 2. **Polling every 8 seconds** as a fallback in case realtime doesn't connect.
 
 Easy constants to tweak in `display.html`:
 ```js
-const NUM_ROWS = 3;              // how many rows (also add/remove .row-viewport elements in the HTML)
-const SPEED_PX_PER_SEC = 55;     // ticker scroll speed
-const BUFFER_MULTIPLIER = 1.6;   // how many viewport-widths of content to keep queued ahead
+const SLOT_COUNT = 44;      // how many photos are visible on the sphere at once
+const ROTATE_SPEED = 0.22;  // spin speed, radians/second
+const TILT_AMOUNT = 0.20;   // how much the sphere wobbles up/down
 ```
 
 ## How the photo flow works
 
 1. **index.html** — guest enters a name or picks anonymous, stored temporarily in `sessionStorage`
-2. **camera.html** — `getUserMedia` opens the front camera; the chosen filter is applied live via CSS `filter` (plus an optional color-wash layer) and re-applied on the capture `<canvas>` so what you see is what gets sent; result becomes a JPEG `Blob`
+2. **camera.html** — `getUserMedia` opens the camera (front by default, with a **Flip** button to switch to the back camera — only the front camera is mirrored, matching how a real camera app behaves); the chosen filter is applied live via CSS `filter` (plus an optional color-wash layer) and re-applied on the capture `<canvas>` so what you see is what gets sent; result becomes a JPEG `Blob`
 3. The blob uploads to **Supabase Storage** (`snapwall-photos` bucket); its public URL, username, and filter name are saved to the `photos` table
 4. **display.html** — fetches all `visible = true` photos, distributes them round-robin across the ticker rows, and subscribes to Realtime + polling so new photos join the ticker automatically
 5. **admin.html** — sign in with Supabase Auth, toggle photos hidden/shown on the wall, or delete them permanently (storage + database)
