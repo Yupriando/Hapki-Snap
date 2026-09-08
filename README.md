@@ -69,6 +69,23 @@ Setelah deploy, share link `index.html` ke tamu (bisa lewat QR code), dan buka `
 4. **display.html** — fetch semua foto `visible = true`, lalu subscribe ke **Supabase Realtime** supaya foto baru langsung muncul tanpa refresh
 5. **admin.html** — login pakai Supabase Auth, bisa toggle sembunyikan/tampilkan foto dari wall, atau hapus permanen (dari storage + database)
 
+## Auto-refresh di display.html
+
+`display.html` sekarang punya dua lapis auto-update, jadi foto baru selalu otomatis muncul tanpa refresh manual:
+
+1. **Realtime (instan)** — lewat Supabase Realtime. Ini butuh tabel `photos` di-enable untuk replication. Kalau kamu run `schema.sql` versi terbaru, ini udah otomatis ke-include (baris `alter publication supabase_realtime add table photos;`). Kalau project Supabase kamu udah lama dan baru nambahin baris ini, run ulang saja baris itu di SQL Editor, atau aktifkan manual lewat **Database → Replication → toggle tabel `photos`**.
+2. **Polling fallback (tiap 8 detik)** — jaga-jaga kalau realtime gak konek (misalnya baru pertama setup dan lupa enable replication, atau koneksi venue kurang stabil). Jadi walau realtime bermasalah, wall tetap update sendiri maksimal delay ~8 detik.
+
+Tampilan wall sekarang juga bukan grid statis lagi:
+- **Spotlight** (foto besar di atas) — otomatis gonta-ganti foto tiap 5 detik, dengan progress bar tipis di atas gambar. Foto yang baru masuk langsung jadi spotlight duluan dengan badge "baru saja".
+- **Marquee** (strip di bawah) — semua foto discroll jalan terus dari kanan ke kiri, looping otomatis. Kecepatan scroll konsisten walau jumlah foto berubah-ubah.
+
+Kalau mau ubah kecepatan atau durasi, di `display.html` ada dua konstanta gampang diubah:
+```js
+const SPOTLIGHT_INTERVAL = 5000; // ms per foto di spotlight
+const MARQUEE_SPEED = 55;        // px per detik, makin besar makin cepat
+```
+
 ## Kustomisasi lanjutan (opsional, kalau mau dikembangkan)
 - Tambah filter baru: edit array `.filter-chip` di `camera.html`, isi `data-css` dengan CSS `filter` value apa saja (grayscale, blur, hue-rotate, dll)
 - Ubah durasi animasi foto masuk ke wall: edit `@keyframes land` di `display.html`

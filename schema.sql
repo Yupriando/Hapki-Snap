@@ -47,6 +47,12 @@ create policy "Authenticated can delete photos"
   to authenticated
   using (true);
 
+-- 6. Enable Realtime on this table so display.html gets new
+--    photos pushed to it instantly instead of relying only on
+--    the polling fallback. Without this, the wall still updates
+--    itself (via polling every few seconds) but with a small delay.
+alter publication supabase_realtime add table photos;
+
 -- =========================================================
 -- Storage bucket setup
 -- Run this section too, or create the bucket manually via

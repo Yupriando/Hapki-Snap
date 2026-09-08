@@ -6,16 +6,24 @@
 <title>SnapWall — live wall</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  body{ overflow-x: hidden; }
+  html, body{ height: 100%; overflow: hidden; }
+
+  .wall-shell{
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
   .wall-header{
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 28px 40px 8px;
+    padding: 24px 40px 4px;
+    flex: 0 0 auto;
   }
   .wall-title{
     font-family: var(--font-display);
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 500;
     margin: 0;
   }
@@ -37,45 +45,156 @@
     50%{ opacity: 0.3; }
   }
 
-  .grid{
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: 20px;
-    padding: 24px 40px 60px;
+  /* ---------------- Spotlight (big, auto-cycling) ---------------- */
+  .spotlight-wrap{
+    flex: 1;
+    min-height: 0;
+    padding: 16px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
-
-  .tile{
+  .spotlight{
     position: relative;
-    background: var(--paper);
-    padding: 10px 10px 38px;
-    animation: land 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-  @keyframes land{
-    0%{ opacity: 0; transform: scale(0.85) translateY(14px); }
-    100%{ opacity: 1; transform: scale(1) translateY(0); }
-  }
-  .tile img{
+    height: 100%;
+    max-width: 920px;
     width: 100%;
-    aspect-ratio: 4/3;
-    object-fit: cover;
-    display: block;
+    background: #000;
+    overflow: hidden;
+  }
+  .spotlight-img-layer{
+    position: absolute;
+    inset: 0;
+  }
+  .spotlight-img-layer img{
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
     background: #000;
   }
-  .tile .cap{
+  .spotlight-img-layer{
+    opacity: 0;
+    transition: opacity 0.6s ease;
+  }
+  .spotlight-img-layer.active{ opacity: 1; }
+
+  .spotlight-cap{
     position: absolute;
-    bottom: 8px;
-    left: 12px;
-    right: 12px;
+    left: 0; right: 0; bottom: 0;
+    padding: 28px 28px 20px;
+    background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    z-index: 3;
+  }
+  .spotlight-cap .name{
     font-family: var(--font-display);
-    font-size: 15px;
+    font-size: 26px;
+    color: var(--paper);
+  }
+  .spotlight-cap .badge-new{
+    font-size: 12px;
+    padding: 3px 10px;
+    background: var(--flash);
+    color: var(--ink);
+    font-weight: 700;
+    border-radius: 2px;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .spotlight-cap .badge-new.show{ opacity: 1; transform: translateY(0); }
+
+  .spotlight-progress{
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    gap: 4px;
+    padding: 10px 14px 0;
+    z-index: 3;
+  }
+  .spotlight-progress .seg{
+    flex: 1;
+    height: 3px;
+    background: rgba(255,255,255,0.2);
+    overflow: hidden;
+  }
+  .spotlight-progress .seg .fill{
+    height: 100%;
+    width: 0%;
+    background: var(--flash);
+  }
+  .spotlight-progress .seg.done .fill{ width: 100%; }
+  .spotlight-progress .seg.active .fill{
+    width: 100%;
+    transition: width linear;
+  }
+
+  /* ---------------- Marquee (bottom strip, always moving) ---------------- */
+  .marquee-viewport{
+    flex: 0 0 auto;
+    height: 190px;
+    overflow: hidden;
+    white-space: nowrap;
+    border-top: 1px solid var(--line);
+    padding: 16px 0;
+    mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
+  }
+  .marquee-track{
+    display: inline-flex;
+    gap: 16px;
+    will-change: transform;
+    animation-name: marquee-scroll;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+  @keyframes marquee-scroll{
+    from{ transform: translateX(0); }
+    to{ transform: translateX(-50%); }
+  }
+  .m-tile{
+    display: inline-block;
+    width: 200px;
+    height: 150px;
+    position: relative;
+    background: var(--paper);
+    padding: 6px 6px 22px;
+    flex: 0 0 auto;
+  }
+  .m-tile img{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .m-tile .cap{
+    position: absolute;
+    bottom: 4px;
+    left: 8px;
+    right: 8px;
+    font-family: var(--font-display);
+    font-size: 12px;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .m-tile.fresh{
+    animation: freshpop 0.6s cubic-bezier(0.2,0.8,0.2,1);
+  }
+  @keyframes freshpop{
+    0%{ opacity: 0; transform: scale(0.8) translateY(10px); }
+    100%{ opacity: 1; transform: scale(1) translateY(0); }
+  }
 
   .empty-state{
-    padding: 100px 40px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     text-align: center;
     color: var(--graphite);
   }
@@ -89,37 +208,63 @@
 </head>
 <body>
 
-<div class="wall-header">
-  <h1 class="wall-title">Snap<em>Wall</em> — live</h1>
-  <div class="wall-meta">
-    <span class="live-dot"></span>
-    <span id="countText" class="frame-counter">0 foto</span>
+<div class="wall-shell">
+  <div class="wall-header">
+    <h1 class="wall-title">Snap<em>Wall</em> — live</h1>
+    <div class="wall-meta">
+      <span class="live-dot"></span>
+      <span id="countText" class="frame-counter">0 foto</span>
+    </div>
   </div>
-</div>
 
-<div id="grid" class="grid"></div>
-<div id="emptyState" class="empty-state" style="display:none;">
-  <p class="big">Belum ada foto</p>
-  <p>Ambil foto pertama lewat halaman kamera, dan dia bakal muncul di sini.</p>
+  <div id="spotlightWrap" class="spotlight-wrap">
+    <div class="spotlight viewfinder" id="spotlight">
+      <span class="vf-tl"></span><span class="vf-tr"></span>
+      <span class="vf-bl"></span><span class="vf-br"></span>
+      <div class="spotlight-progress" id="spotlightProgress"></div>
+      <!-- two layers cross-fade between each other -->
+      <div class="spotlight-img-layer" id="layerA"><img id="imgA" alt=""></div>
+      <div class="spotlight-img-layer" id="layerB"><img id="imgB" alt=""></div>
+      <div class="spotlight-cap">
+        <span class="name" id="spotlightName"></span>
+        <span class="badge-new" id="badgeNew">baru saja</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="marquee-viewport" id="marqueeViewport">
+    <div class="marquee-track" id="marqueeTrack"></div>
+  </div>
+
+  <div id="emptyState" class="empty-state" style="display:none;">
+    <p class="big">Belum ada foto</p>
+    <p>Ambil foto pertama lewat halaman kamera, dan dia bakal muncul di sini.</p>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <script>
-  const grid = document.getElementById('grid');
-  const emptyState = document.getElementById('emptyState');
-  const countText = document.getElementById('countText');
+  // ---------- shared state ----------
+  const MAX_TRACKED = 60;       // cap how many photos we keep in memory
+  const SPOTLIGHT_INTERVAL = 5000; // ms per spotlight photo
+  const MARQUEE_SPEED = 55;     // px per second
 
-  function makeTile(photo){
-    const tile = document.createElement('div');
-    tile.className = 'tile';
-    tile.dataset.id = photo.id;
-    tile.innerHTML = `
-      <img src="${photo.photo_url}" alt="foto dari ${photo.username}" loading="lazy">
-      <div class="cap">${escapeHtml(photo.username)}</div>
-    `;
-    return tile;
-  }
+  let photos = [];              // newest first
+  const knownIds = new Set();
+
+  const countText = document.getElementById('countText');
+  const emptyState = document.getElementById('emptyState');
+  const spotlightWrap = document.getElementById('spotlightWrap');
+  const marqueeViewport = document.getElementById('marqueeViewport');
+  const marqueeTrack = document.getElementById('marqueeTrack');
+  const spotlightName = document.getElementById('spotlightName');
+  const badgeNew = document.getElementById('badgeNew');
+  const spotlightProgress = document.getElementById('spotlightProgress');
+  const layerA = document.getElementById('layerA');
+  const layerB = document.getElementById('layerB');
+  const imgA = document.getElementById('imgA');
+  const imgB = document.getElementById('imgB');
 
   function escapeHtml(str){
     const div = document.createElement('div');
@@ -127,29 +272,171 @@
     return div.innerHTML;
   }
 
-  function updateCount(){
-    const n = grid.children.length;
-    countText.textContent = `${n} foto`;
-    emptyState.style.display = n === 0 ? 'block' : 'none';
+  function updateVisibility(){
+    const hasPhotos = photos.length > 0;
+    countText.textContent = `${photos.length} foto`;
+    emptyState.style.display = hasPhotos ? 'none' : 'flex';
+    spotlightWrap.style.display = hasPhotos ? 'flex' : 'none';
+    marqueeViewport.style.display = hasPhotos ? 'block' : 'none';
+  }
+
+  // ================= SPOTLIGHT =================
+  let spotlightIndex = 0;
+  let usingLayerA = true;
+  let spotlightTimer = null;
+  let progressStart = null;
+
+  function buildProgressSegments(){
+    spotlightProgress.innerHTML = '';
+    const n = Math.min(photos.length, 10); // don't clutter with too many dots
+    for (let i = 0; i < n; i++){
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      seg.innerHTML = '<div class="fill"></div>';
+      spotlightProgress.appendChild(seg);
+    }
+  }
+
+  function renderProgress(){
+    const segs = spotlightProgress.querySelectorAll('.seg');
+    segs.forEach((seg, i) => {
+      seg.classList.remove('active', 'done');
+      const fill = seg.querySelector('.fill');
+      fill.style.transition = 'none';
+      fill.style.width = '0%';
+      if (i < spotlightIndex) seg.classList.add('done');
+    });
+    if (segs[spotlightIndex]){
+      const seg = segs[spotlightIndex];
+      const fill = seg.querySelector('.fill');
+      seg.classList.add('active');
+      requestAnimationFrame(() => {
+        fill.style.transition = `width ${SPOTLIGHT_INTERVAL}ms linear`;
+        fill.style.width = '100%';
+      });
+    }
+  }
+
+  function showSpotlight(index, opts){
+    opts = opts || {};
+    if (photos.length === 0) return;
+    spotlightIndex = ((index % photos.length) + photos.length) % photos.length;
+    const photo = photos[spotlightIndex];
+
+    const nextLayer = usingLayerA ? layerB : layerA;
+    const nextImg = usingLayerA ? imgB : imgA;
+    const prevLayer = usingLayerA ? layerA : layerB;
+
+    nextImg.src = photo.photo_url;
+    nextLayer.classList.add('active');
+    prevLayer.classList.remove('active');
+    usingLayerA = !usingLayerA;
+
+    spotlightName.textContent = photo.username;
+
+    if (opts.isFresh){
+      badgeNew.classList.add('show');
+      setTimeout(() => badgeNew.classList.remove('show'), 2200);
+    } else {
+      badgeNew.classList.remove('show');
+    }
+
+    if (spotlightIndex < 10) renderProgress();
+  }
+
+  function restartSpotlightTimer(){
+    if (spotlightTimer) clearInterval(spotlightTimer);
+    spotlightTimer = setInterval(() => {
+      showSpotlight(spotlightIndex + 1);
+    }, SPOTLIGHT_INTERVAL);
+  }
+
+  // ================= MARQUEE =================
+  function buildMarqueeTile(photo, isFresh){
+    const div = document.createElement('div');
+    div.className = 'm-tile' + (isFresh ? ' fresh' : '');
+    div.innerHTML = `
+      <img src="${photo.photo_url}" alt="foto dari ${escapeHtml(photo.username)}" loading="lazy">
+      <div class="cap">${escapeHtml(photo.username)}</div>
+    `;
+    return div;
+  }
+
+  function rebuildMarquee(freshId){
+    marqueeTrack.style.animation = 'none';
+    marqueeTrack.innerHTML = '';
+
+    if (photos.length === 0) return;
+
+    // Duplicate the list so the strip loops seamlessly.
+    const doubled = photos.concat(photos);
+    doubled.forEach(photo => {
+      marqueeTrack.appendChild(buildMarqueeTile(photo, photo.id === freshId));
+    });
+
+    // Measure one full set's width to keep scroll speed constant
+    // regardless of how many photos are currently loaded.
+    requestAnimationFrame(() => {
+      const fullWidth = marqueeTrack.scrollWidth / 2;
+      const duration = Math.max(fullWidth / MARQUEE_SPEED, 6);
+      marqueeTrack.style.animationDuration = `${duration}s`;
+      marqueeTrack.style.animation = `marquee-scroll ${duration}s linear infinite`;
+    });
+  }
+
+  // ================= DATA FLOW =================
+  function addNewPhoto(photo){
+    if (knownIds.has(photo.id)) return;
+    knownIds.add(photo.id);
+    photos.unshift(photo);
+    if (photos.length > MAX_TRACKED){
+      const removed = photos.pop();
+      knownIds.delete(removed.id);
+    }
+
+    updateVisibility();
+    buildProgressSegments();
+    rebuildMarquee(photo.id);
+    showSpotlight(0, { isFresh: true });
+    restartSpotlightTimer();
   }
 
   async function loadInitial(){
     try{
-      const photos = await fetchVisiblePhotos();
-      grid.innerHTML = '';
-      photos.forEach(p => grid.appendChild(makeTile(p)));
-      updateCount();
+      const initial = await fetchVisiblePhotos();
+      photos = initial.slice(0, MAX_TRACKED);
+      photos.forEach(p => knownIds.add(p.id));
+
+      updateVisibility();
+      buildProgressSegments();
+      rebuildMarquee(null);
+      if (photos.length > 0){
+        showSpotlight(0);
+        restartSpotlightTimer();
+      }
     }catch(err){
       console.error(err);
       countText.textContent = 'Gagal muat foto';
     }
   }
 
-  subscribeToNewPhotos((photo) => {
-    const tile = makeTile(photo);
-    grid.prepend(tile);
-    updateCount();
-  });
+  // Realtime: instant updates when Supabase Realtime is enabled on the table.
+  subscribeToNewPhotos((photo) => addNewPhoto(photo));
+
+  // Polling fallback: catches anything realtime misses (e.g. replication
+  // not enabled yet, or a dropped websocket), so the wall still updates
+  // itself automatically within a few seconds either way.
+  const POLL_INTERVAL = 8000;
+  setInterval(async () => {
+    try{
+      const latest = await fetchVisiblePhotos();
+      const fresh = latest.filter(p => !knownIds.has(p.id));
+      // oldest-first so the newest ends up spotlighted last
+      fresh.reverse().forEach(p => addNewPhoto(p));
+    }catch(err){
+      console.error('poll refresh failed', err);
+    }
+  }, POLL_INTERVAL);
 
   loadInitial();
 </script>
