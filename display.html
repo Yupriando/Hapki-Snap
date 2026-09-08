@@ -303,18 +303,9 @@
     const viewportWidth = row.viewport.clientWidth || 0;
     if (viewportWidth === 0) return;
 
-    // If the row has gone completely empty (every tile scrolled off
-    // and got recycled), the accumulated offset from all that prior
-    // scrolling is still sitting there — appending a fresh tile now
-    // would place it using that huge leftover offset, so it'd show
-    // up far off-screen to the left instead of entering from the
-    // right. Reset the baseline so the next tile starts just past
-    // the right edge, like a normal entrance. In practice this
-    // should rarely fire now, since we refill continuously below.
-    if (row.queue.length === 0){
-      row.offset = viewportWidth;
-      row.track.style.transform = `translateX(${row.offset}px)`;
-    }
+    // In practice this should rarely fire now, since we refill
+    // continuously below — but it's a safety net for edge cases.
+    resetOffsetIfEmpty(row);
 
     // Keep the belt topped up to a modest buffer of width queued
     // ahead on screen, refilling immediately whenever there's room —
@@ -347,8 +338,26 @@
     }
   }
 
+  // Whenever we're about to append into a row that currently has no
+  // tiles at all, make sure the track's offset is put back at "just
+  // past the right edge" first. Without this, a row that starts
+  // completely empty (e.g. before any photos have loaded) still has
+  // its offset sitting at 0, so the very first tiles appended land
+  // right inside the visible area instead of gliding in from the
+  // right — which is exactly what made the initial batch (and any
+  // photo arriving after a row went empty) look like it "just
+  // popped in" all together instead of entering naturally.
+  function resetOffsetIfEmpty(row){
+    if (row.queue.length === 0){
+      const vw = row.viewport.clientWidth || 0;
+      row.offset = vw;
+      row.track.style.transform = `translateX(${row.offset}px)`;
+    }
+  }
+
   function addPhotoToRow(row, photo, isFresh){
     row.sourcePool.push(photo);
+    resetOffsetIfEmpty(row);
     appendTile(row, photo, isFresh);
   }
 
