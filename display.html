@@ -245,22 +245,37 @@
     return a;
   }
 
-  // Pulls the next photo to display in this row. Each photo is shown
-  // once per "lap" through the row's pool (shuffled, so the order
-  // isn't predictable), rather than being duplicated repeatedly to
-  // pad out the buffer. This is what previously made a photo with a
-  // small pool (e.g. only 2 unique shots) get placed right next to
-  // itself, which read as a glitch/overlap.
+  // Pulls the next photo to display in this row. A photo is only
+  // eligible if it isn't already alive somewhere else on this row's
+  // track — that's what previously let the same shot appear twice
+  // (or more) at once when the pool was small. If every unique photo
+  // is currently on screen, this returns null and the row is simply
+  // left with a gap until one of them scrolls off and frees up.
+  function aliveIds(row){
+    return new Set(row.queue.map(item => item.photo.id));
+  }
+
   function nextFromPool(row){
-    if (row.lapQueue.length === 0){
-      if (row.sourcePool.length === 0) return null;
-      let next = shuffle(row.sourcePool);
-      // Never let the same photo repeat immediately across a lap boundary.
-      if (row.lastServed && next.length > 1 && next[0].id === row.lastServed.id){
-        [next[0], next[1]] = [next[1], next[0]];
+    const alive = aliveIds(row);
+
+    while (row.lapQueue.length){
+      const candidate = row.lapQueue.shift();
+      if (!alive.has(candidate.id)){
+        row.lastServed = candidate;
+        return candidate;
       }
-      row.lapQueue = next;
+      // still on screen from the previous lap — skip it for now
     }
+
+    if (row.sourcePool.length === 0) return null;
+    const eligible = shuffle(row.sourcePool.filter(p => !alive.has(p.id)));
+    if (eligible.length === 0) return null; // every unique photo is already on screen
+
+    if (row.lastServed && eligible.length > 1 && eligible[0].id === row.lastServed.id){
+      [eligible[0], eligible[1]] = [eligible[1], eligible[0]];
+    }
+    row.lapQueue = eligible;
+
     const photo = row.lapQueue.shift();
     row.lastServed = photo;
     return photo;
