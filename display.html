@@ -210,7 +210,6 @@
     sourcePool: [],  // unique photos assigned to this row
     lapQueue: [],    // shuffled, not-yet-shown-this-lap photos
     lastServed: null,
-    lastAppendAt: 0, // rAF timestamp of the last tile we let in, for pacing
     offset: 0
   }));
 
@@ -249,8 +248,8 @@
     const yJitter = randomBetween(-16, 16).toFixed(1);
     const scale = randomBetween(0.88, 1.06).toFixed(3);
     div.style.zIndex = String(Math.round(randomBetween(1, 10)));
-    div.style.marginLeft = `${randomBetween(0, 14).toFixed(1)}px`;
-    div.style.marginRight = `${randomBetween(0, 14).toFixed(1)}px`;
+    div.style.marginLeft = `${randomBetween(6, 34).toFixed(1)}px`;
+    div.style.marginRight = `${randomBetween(6, 34).toFixed(1)}px`;
 
     return div;
   }
@@ -274,45 +273,32 @@
     return a;
   }
 
-  // Pulls the next photo to display in this row. A photo is only
-  // eligible if it isn't already alive somewhere else on this row's
-  // track — that's what previously let the same shot appear twice
-  // (or more) at once when the pool was small. If every unique photo
-  // is currently on screen, this returns null and the row is simply
-  // left with a gap until one of them scrolls off and frees up.
-  function aliveIds(row){
-    return new Set(row.queue.map(item => item.photo.id));
-  }
-
+  // Pulls the next photo to display in this row. Each photo is shown
+  // once per shuffled "lap" through the row's pool, and we just make
+  // sure the same photo never lands immediately back-to-back across
+  // a lap boundary. We deliberately do NOT block on a photo already
+  // being visible elsewhere in the row — that produced real empty
+  // gaps in the belt when a row's pool was small, which read as
+  // tiles just vanishing instead of being replaced. Keeping the belt
+  // continuously fed is what sells the "exits left, re-enters right"
+  // illusion; keeping duplicates from looking cluttered is handled
+  // instead by spacing tiles further apart (see buildTile's random
+  // margins) and a modest BUFFER_MULTIPLIER.
   function nextFromPool(row){
-    const alive = aliveIds(row);
-
-    while (row.lapQueue.length){
-      const candidate = row.lapQueue.shift();
-      if (!alive.has(candidate.id)){
-        row.lastServed = candidate;
-        return candidate;
+    if (row.lapQueue.length === 0){
+      if (row.sourcePool.length === 0) return null;
+      const next = shuffle(row.sourcePool);
+      if (row.lastServed && next.length > 1 && next[0].id === row.lastServed.id){
+        [next[0], next[1]] = [next[1], next[0]];
       }
-      // still on screen from the previous lap — skip it for now
+      row.lapQueue = next;
     }
-
-    if (row.sourcePool.length === 0) return null;
-    const eligible = shuffle(row.sourcePool.filter(p => !alive.has(p.id)));
-    if (eligible.length === 0) return null; // every unique photo is already on screen
-
-    if (row.lastServed && eligible.length > 1 && eligible[0].id === row.lastServed.id){
-      [eligible[0], eligible[1]] = [eligible[1], eligible[0]];
-    }
-    row.lapQueue = eligible;
-
     const photo = row.lapQueue.shift();
     row.lastServed = photo;
     return photo;
   }
 
-  const MIN_ENTRY_GAP_MS = 700; // minimum time between two new tiles entering the same row
-
-  function ensureBuffer(row, now){
+  function ensureBuffer(row){
     if (row.sourcePool.length === 0) return;
     const viewportWidth = row.viewport.clientWidth || 0;
     if (viewportWidth === 0) return;
@@ -323,34 +309,27 @@
     // would place it using that huge leftover offset, so it'd show
     // up far off-screen to the left instead of entering from the
     // right. Reset the baseline so the next tile starts just past
-    // the right edge, like a normal entrance, and let it in right
-    // away rather than waiting out the pacing gap below.
+    // the right edge, like a normal entrance. In practice this
+    // should rarely fire now, since we refill continuously below.
     if (row.queue.length === 0){
       row.offset = viewportWidth;
       row.track.style.transform = `translateX(${row.offset}px)`;
-      row.lastAppendAt = 0;
     }
 
-    // Keep adding filler (cycling once through this row's known
-    // photos per lap) until there's a modest buffer of width queued
-    // ahead on screen — deliberately not filling to the brim, so the
-    // wall stays sparse rather than crowded with repeats. Tiles are
-    // let in one at a time with a minimum gap between them, so a
-    // sudden gap in the row (e.g. right after a full clear-out)
-    // trickles back in one photo at a time instead of several
-    // popping in together, which is what made exits/entries read as
-    // happening "all at once".
+    // Keep the belt topped up to a modest buffer of width queued
+    // ahead on screen, refilling immediately whenever there's room —
+    // no artificial delay. That's what makes a tile exiting on the
+    // left feel like it's replaced right away by one entering on the
+    // right, instead of the row going quiet for a moment.
     let guard = 0;
     while (guard++ < 40){
       const viewportRect = row.viewport.getBoundingClientRect();
       const trackRect = row.track.getBoundingClientRect();
       const aheadWidth = trackRect.right - viewportRect.right;
       if (aheadWidth > viewportWidth * BUFFER_MULTIPLIER) break;
-      if (now - row.lastAppendAt < MIN_ENTRY_GAP_MS) break;
       const nextPhoto = nextFromPool(row);
       if (!nextPhoto) break;
       appendTile(row, nextPhoto, false);
-      row.lastAppendAt = now;
     }
   }
 
@@ -429,7 +408,7 @@
         row.track.style.transform = `translateX(${row.offset}px)`;
         recycle(row);
       }
-      ensureBuffer(row, ts);
+      ensureBuffer(row);
     });
 
     requestAnimationFrame(tick);
