@@ -210,6 +210,7 @@
     sourcePool: [],  // unique photos assigned to this row
     lapQueue: [],    // shuffled, not-yet-shown-this-lap photos
     lastServed: null,
+    lastAppendAt: 0, // rAF timestamp of the last tile we let in, for pacing
     offset: 0
   }));
 
@@ -309,7 +310,9 @@
     return photo;
   }
 
-  function ensureBuffer(row){
+  const MIN_ENTRY_GAP_MS = 700; // minimum time between two new tiles entering the same row
+
+  function ensureBuffer(row, now){
     if (row.sourcePool.length === 0) return;
     const viewportWidth = row.viewport.clientWidth || 0;
     if (viewportWidth === 0) return;
@@ -320,25 +323,34 @@
     // would place it using that huge leftover offset, so it'd show
     // up far off-screen to the left instead of entering from the
     // right. Reset the baseline so the next tile starts just past
-    // the right edge, like a normal entrance.
+    // the right edge, like a normal entrance, and let it in right
+    // away rather than waiting out the pacing gap below.
     if (row.queue.length === 0){
       row.offset = viewportWidth;
       row.track.style.transform = `translateX(${row.offset}px)`;
+      row.lastAppendAt = 0;
     }
 
     // Keep adding filler (cycling once through this row's known
     // photos per lap) until there's a modest buffer of width queued
     // ahead on screen — deliberately not filling to the brim, so the
-    // wall stays sparse rather than crowded with repeats.
+    // wall stays sparse rather than crowded with repeats. Tiles are
+    // let in one at a time with a minimum gap between them, so a
+    // sudden gap in the row (e.g. right after a full clear-out)
+    // trickles back in one photo at a time instead of several
+    // popping in together, which is what made exits/entries read as
+    // happening "all at once".
     let guard = 0;
     while (guard++ < 40){
       const viewportRect = row.viewport.getBoundingClientRect();
       const trackRect = row.track.getBoundingClientRect();
       const aheadWidth = trackRect.right - viewportRect.right;
       if (aheadWidth > viewportWidth * BUFFER_MULTIPLIER) break;
+      if (now - row.lastAppendAt < MIN_ENTRY_GAP_MS) break;
       const nextPhoto = nextFromPool(row);
       if (!nextPhoto) break;
       appendTile(row, nextPhoto, false);
+      row.lastAppendAt = now;
     }
   }
 
@@ -417,7 +429,7 @@
         row.track.style.transform = `translateX(${row.offset}px)`;
         recycle(row);
       }
-      ensureBuffer(row);
+      ensureBuffer(row, ts);
     });
 
     requestAnimationFrame(tick);
