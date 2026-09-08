@@ -168,7 +168,7 @@
 
   const NUM_ROWS = 3;
   const SPEED_PX_PER_SEC = 55;
-  const BUFFER_MULTIPLIER = 1.6; // keep this many viewport-widths of content queued ahead
+  const BUFFER_MULTIPLIER = 1.15; // keep this many viewport-widths of content queued ahead
 
   const countText = document.getElementById('countText');
   const emptyState = document.getElementById('emptyState');
@@ -178,8 +178,9 @@
     viewport: document.querySelectorAll('.row-viewport')[i],
     track: document.getElementById('track' + i),
     queue: [],       // [{ el, photo }] left-to-right DOM order
-    sourcePool: [],  // unique photos assigned to this row, cycled for filler
-    fillCursor: 0,
+    sourcePool: [],  // unique photos assigned to this row
+    lapQueue: [],    // shuffled, not-yet-shown-this-lap photos
+    lastServed: null,
     offset: 0
   }));
 
@@ -199,6 +200,10 @@
     rowsEl.style.display = hasPhotos ? 'flex' : 'none';
   }
 
+  function randomBetween(min, max){
+    return Math.random() * (max - min) + min;
+  }
+
   function buildTile(photo, isFresh){
     const div = document.createElement('div');
     div.className = 'tile' + (isFresh ? ' fresh' : '');
@@ -206,6 +211,18 @@
       <img src="${photo.photo_url}" alt="photo from ${escapeHtml(photo.username)}" loading="lazy">
       <div class="cap">${escapeHtml(photo.username)}</div>
     `;
+
+    // Scatter each tile slightly so the wall doesn't look like a
+    // perfectly ruled grid: a little rotation, a vertical nudge and
+    // a small size variance, like snapshots pinned up by hand.
+    const rot = randomBetween(-4.5, 4.5).toFixed(2);
+    const yJitter = randomBetween(-16, 16).toFixed(1);
+    const scale = randomBetween(0.88, 1.06).toFixed(3);
+    div.style.transform = `rotate(${rot}deg) translateY(${yJitter}px) scale(${scale})`;
+    div.style.zIndex = String(Math.round(randomBetween(1, 10)));
+    div.style.marginLeft = `${randomBetween(0, 14).toFixed(1)}px`;
+    div.style.marginRight = `${randomBetween(0, 14).toFixed(1)}px`;
+
     return div;
   }
 
@@ -219,21 +236,53 @@
     return row.viewport.offsetParent !== null;
   }
 
+  function shuffle(arr){
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Pulls the next photo to display in this row. Each photo is shown
+  // once per "lap" through the row's pool (shuffled, so the order
+  // isn't predictable), rather than being duplicated repeatedly to
+  // pad out the buffer. This is what previously made a photo with a
+  // small pool (e.g. only 2 unique shots) get placed right next to
+  // itself, which read as a glitch/overlap.
+  function nextFromPool(row){
+    if (row.lapQueue.length === 0){
+      if (row.sourcePool.length === 0) return null;
+      let next = shuffle(row.sourcePool);
+      // Never let the same photo repeat immediately across a lap boundary.
+      if (row.lastServed && next.length > 1 && next[0].id === row.lastServed.id){
+        [next[0], next[1]] = [next[1], next[0]];
+      }
+      row.lapQueue = next;
+    }
+    const photo = row.lapQueue.shift();
+    row.lastServed = photo;
+    return photo;
+  }
+
   function ensureBuffer(row){
     if (row.sourcePool.length === 0) return;
     const viewportWidth = row.viewport.clientWidth || 0;
     if (viewportWidth === 0) return;
 
-    // Keep adding filler (cycling through this row's known photos)
-    // until there's a healthy buffer of width queued ahead on screen.
+    // Keep adding filler (cycling once through this row's known
+    // photos per lap) until there's a modest buffer of width queued
+    // ahead on screen — deliberately not filling to the brim, so the
+    // wall stays sparse rather than crowded with repeats.
     let guard = 0;
     while (guard++ < 40){
       const viewportRect = row.viewport.getBoundingClientRect();
       const trackRect = row.track.getBoundingClientRect();
       const aheadWidth = trackRect.right - viewportRect.right;
       if (aheadWidth > viewportWidth * BUFFER_MULTIPLIER) break;
-      const nextPhoto = row.sourcePool[row.fillCursor % row.sourcePool.length];
-      row.fillCursor++;
+      const nextPhoto = nextFromPool(row);
+      if (!nextPhoto) break;
       appendTile(row, nextPhoto, false);
     }
   }
