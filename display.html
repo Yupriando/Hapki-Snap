@@ -61,8 +61,20 @@
     min-height: 0;
     position: relative;
     overflow: hidden;
-    mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
+    mask-image: linear-gradient(to right,
+      transparent 0%,
+      rgba(0,0,0,0.45) 5%,
+      black 14%,
+      black 86%,
+      rgba(0,0,0,0.45) 95%,
+      transparent 100%);
+    -webkit-mask-image: linear-gradient(to right,
+      transparent 0%,
+      rgba(0,0,0,0.45) 5%,
+      black 14%,
+      black 86%,
+      rgba(0,0,0,0.45) 95%,
+      transparent 100%);
   }
   .row-track{
     position: absolute;
@@ -81,6 +93,7 @@
     flex: 0 0 auto;
     background: var(--paper);
     padding: clamp(4px, 0.6vw, 9px) clamp(4px, 0.6vw, 9px) clamp(16px, 2.6vh, 28px);
+    transform: var(--jitter, none);
   }
   .tile img{ width: 100%; height: 100%; object-fit: cover; display: block; }
   .tile .cap{
@@ -96,10 +109,26 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tile.fresh{ animation: freshpop 0.5s cubic-bezier(0.2,0.8,0.2,1); }
+  .tile.fresh{ animation: freshpop 0.75s cubic-bezier(0.16, 1, 0.3, 1); }
   @keyframes freshpop{
-    0%{ opacity: 0; transform: scale(0.82); }
-    100%{ opacity: 1; transform: scale(1); }
+    0%{
+      opacity: 0;
+      filter: brightness(1.9) blur(9px);
+      transform: var(--jitter, none) scale(0.68) rotate(-9deg);
+      box-shadow: 0 0 46px 12px rgba(255,255,255,0.55);
+    }
+    45%{
+      opacity: 1;
+      filter: brightness(1.15) blur(0px);
+      transform: var(--jitter, none) scale(1.06) rotate(2deg);
+      box-shadow: 0 0 20px 5px rgba(255,255,255,0.28);
+    }
+    100%{
+      opacity: 1;
+      filter: brightness(1) blur(0px);
+      transform: var(--jitter, none) scale(1) rotate(0deg);
+      box-shadow: 0 0 0 0 rgba(255,255,255,0);
+    }
   }
 
   /* Fewer rows on narrow or short screens: remaining rows use the
@@ -218,7 +247,6 @@
     const rot = randomBetween(-4.5, 4.5).toFixed(2);
     const yJitter = randomBetween(-16, 16).toFixed(1);
     const scale = randomBetween(0.88, 1.06).toFixed(3);
-    div.style.transform = `rotate(${rot}deg) translateY(${yJitter}px) scale(${scale})`;
     div.style.zIndex = String(Math.round(randomBetween(1, 10)));
     div.style.marginLeft = `${randomBetween(0, 14).toFixed(1)}px`;
     div.style.marginRight = `${randomBetween(0, 14).toFixed(1)}px`;
