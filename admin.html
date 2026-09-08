@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnapWall — admin</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .login-wrap{
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .login-card{
+    width: 100%;
+    max-width: 380px;
+    padding: 40px 32px;
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+  }
+  .login-card h1{
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 500;
+    margin: 0 0 6px;
+  }
+  .login-card p{
+    color: var(--graphite);
+    font-size: 14px;
+    margin: 0 0 24px;
+  }
+  .login-card .field{ margin-bottom: 12px; }
+  .login-error{
+    font-size: 13px;
+    color: var(--flash);
+    min-height: 16px;
+    margin: 8px 0 0;
+  }
+
+  /* --- dashboard --- */
+  #dashboard{ display: none; }
+  .admin-header{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 24px 40px;
+    border-bottom: 1px solid var(--line);
+  }
+  .admin-header h1{
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 500;
+    margin: 0;
+  }
+  .admin-tools{
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+  .admin-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 18px;
+    padding: 28px 40px 60px;
+  }
+  .admin-tile{
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+  }
+  .admin-tile img{
+    width: 100%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    display: block;
+  }
+  .admin-tile.hidden-photo{ opacity: 0.45; }
+  .admin-tile .meta{
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .admin-tile .meta .name{
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .admin-tile .meta .filter-tag{
+    color: var(--graphite);
+    font-size: 12px;
+  }
+  .admin-tile .actions{
+    display: flex;
+    gap: 8px;
+    padding: 0 12px 12px;
+  }
+  .admin-tile .actions button{
+    flex: 1;
+    padding: 8px;
+    font-size: 12px;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--paper);
+  }
+  .admin-tile .actions .danger:hover{ border-color: var(--flash); color: var(--flash); }
+  .admin-empty{
+    padding: 80px 40px;
+    text-align: center;
+    color: var(--graphite);
+  }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-card viewfinder">
+    <span class="vf-tl"></span><span class="vf-tr"></span>
+    <span class="vf-bl"></span><span class="vf-br"></span>
+    <h1>Admin</h1>
+    <p>Masuk buat kelola foto di SnapWall.</p>
+    <input class="field" id="emailField" type="email" placeholder="Email" autocomplete="username">
+    <input class="field" id="passField" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="btn btn-primary" id="loginBtn" style="width:100%; margin-top:8px;">Masuk</button>
+    <p class="login-error" id="loginError"></p>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard">
+  <div class="admin-header">
+    <h1>Kelola foto</h1>
+    <div class="admin-tools">
+      <span class="frame-counter" id="adminCount">0 foto</span>
+      <button class="btn btn-ghost" id="logoutBtn">Keluar</button>
+    </div>
+  </div>
+  <div class="admin-grid" id="adminGrid"></div>
+  <div class="admin-empty" id="adminEmpty" style="display:none;">Belum ada foto masuk.</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  const loginWrap = document.getElementById('loginWrap');
+  const dashboard = document.getElementById('dashboard');
+  const emailField = document.getElementById('emailField');
+  const passField = document.getElementById('passField');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginError = document.getElementById('loginError');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const adminGrid = document.getElementById('adminGrid');
+  const adminEmpty = document.getElementById('adminEmpty');
+  const adminCount = document.getElementById('adminCount');
+
+  async function checkSession(){
+    const { data } = await supabaseClient.auth.getSession();
+    if (data.session){
+      showDashboard();
+    }
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    loginError.textContent = '';
+    loginBtn.disabled = true;
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email: emailField.value.trim(),
+      password: passField.value
+    });
+    loginBtn.disabled = false;
+    if (error){
+      loginError.textContent = 'Email atau password salah.';
+      return;
+    }
+    showDashboard();
+  });
+
+  passField.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginBtn.click(); });
+
+  logoutBtn.addEventListener('click', async () => {
+    await supabaseClient.auth.signOut();
+    dashboard.style.display = 'none';
+    loginWrap.style.display = 'flex';
+  });
+
+  function showDashboard(){
+    loginWrap.style.display = 'none';
+    dashboard.style.display = 'block';
+    loadPhotos();
+  }
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function loadPhotos(){
+    try{
+      const photos = await fetchAllPhotosAdmin();
+      adminGrid.innerHTML = '';
+      adminCount.textContent = `${photos.length} foto`;
+      adminEmpty.style.display = photos.length === 0 ? 'block' : 'none';
+
+      photos.forEach(photo => {
+        const tile = document.createElement('div');
+        tile.className = 'admin-tile' + (photo.visible ? '' : ' hidden-photo');
+        tile.innerHTML = `
+          <img src="${photo.photo_url}" alt="foto dari ${escapeHtml(photo.username)}">
+          <div class="meta">
+            <div class="name">${escapeHtml(photo.username)}</div>
+            <div class="filter-tag">filter: ${escapeHtml(photo.filter_name)}</div>
+          </div>
+          <div class="actions">
+            <button class="toggle-btn" data-id="${photo.id}" data-visible="${photo.visible}">
+              ${photo.visible ? 'Sembunyikan' : 'Tampilkan'}
+            </button>
+            <button class="danger delete-btn" data-id="${photo.id}" data-path="${photo.storage_path}">Hapus</button>
+          </div>
+        `;
+        adminGrid.appendChild(tile);
+      });
+    }catch(err){
+      console.error(err);
+      adminEmpty.textContent = 'Gagal memuat foto.';
+      adminEmpty.style.display = 'block';
+    }
+  }
+
+  adminGrid.addEventListener('click', async (e) => {
+    const toggleBtn = e.target.closest('.toggle-btn');
+    const deleteBtn = e.target.closest('.delete-btn');
+
+    if (toggleBtn){
+      const id = toggleBtn.dataset.id;
+      const currentlyVisible = toggleBtn.dataset.visible === 'true';
+      toggleBtn.disabled = true;
+      try{
+        await setPhotoVisibility(id, !currentlyVisible);
+        loadPhotos();
+      }catch(err){
+        console.error(err);
+        toggleBtn.disabled = false;
+      }
+    }
+
+    if (deleteBtn){
+      if (!confirm('Hapus foto ini permanen?')) return;
+      const id = deleteBtn.dataset.id;
+      const path = deleteBtn.dataset.path;
+      deleteBtn.disabled = true;
+      try{
+        await deletePhoto(id, path);
+        loadPhotos();
+      }catch(err){
+        console.error(err);
+        deleteBtn.disabled = false;
+      }
+    }
+  });
+
+  checkSession();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnapWall — kamera</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body{ overflow: hidden; }
+  .stage{
+    position: relative;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- top bar ---- */
+  .topbar{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    z-index: 5;
+  }
+  .name-tag{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    background: rgba(18,16,22,0.7);
+    border: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--paper);
+    backdrop-filter: blur(6px);
+  }
+  .name-tag .dot{
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--flash);
+  }
+  .exit-link{
+    font-size: 13px;
+    color: var(--graphite);
+    padding: 8px 14px;
+    background: rgba(18,16,22,0.7);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(6px);
+  }
+
+  /* ---- camera viewport ---- */
+  .cam-wrap{
+    flex: 1;
+    position: relative;
+    margin: 0 20px;
+    overflow: hidden;
+    background: #000;
+  }
+  video{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* mirror, feels natural for selfie */
+  }
+  .flash-overlay{
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .flash-overlay.firing{
+    animation: flashfire 0.35s ease-out;
+  }
+  @keyframes flashfire{
+    0%{ opacity: 0.9; }
+    100%{ opacity: 0; }
+  }
+  .cam-status{
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--graphite);
+    font-size: 14px;
+    text-align: center;
+    padding: 24px;
+  }
+
+  /* ---- filter strip ---- */
+  .filter-strip{
+    display: flex;
+    gap: 10px;
+    padding: 16px 20px;
+    overflow-x: auto;
+  }
+  .filter-strip::-webkit-scrollbar{ display: none; }
+  .filter-chip{
+    flex: 0 0 auto;
+    padding: 9px 16px;
+    font-size: 13px;
+    color: var(--graphite);
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .filter-chip.active{
+    color: var(--ink);
+    background: var(--aperture);
+    border-color: var(--aperture);
+    font-weight: 600;
+  }
+
+  /* ---- shutter row ---- */
+  .shutter-row{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 20px 32px;
+  }
+  .shutter-btn{
+    width: 78px;
+    height: 78px;
+    border-radius: 50%;
+    background: transparent;
+    border: 3px solid var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+  .shutter-btn .inner{
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background: var(--flash);
+    transition: transform 0.1s ease, background 0.1s ease;
+  }
+  .shutter-btn:active .inner{
+    transform: scale(0.85);
+  }
+  .shutter-btn:disabled .inner{
+    background: var(--graphite-dim);
+  }
+
+  /* ---- review overlay (after snap, before upload) ---- */
+  .review-overlay{
+    position: fixed;
+    inset: 0;
+    background: var(--ink);
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .review-overlay.show{ display: flex; }
+  .review-frame{
+    position: relative;
+    max-width: 480px;
+    width: 100%;
+    background: var(--paper);
+    padding: 12px 12px 44px;
+  }
+  .review-frame img{
+    width: 100%;
+    display: block;
+  }
+  .review-caption{
+    position: absolute;
+    bottom: 12px;
+    left: 12px;
+    font-family: var(--font-display);
+    font-size: 16px;
+    color: var(--ink);
+  }
+  .review-actions{
+    display: flex;
+    gap: 12px;
+    margin-top: 28px;
+    width: 100%;
+    max-width: 480px;
+  }
+  .review-actions .btn{ flex: 1; }
+  .upload-status{
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--graphite);
+    min-height: 18px;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="captureCanvas" style="display:none;"></canvas>
+
+<div class="stage">
+  <div class="topbar">
+    <div class="name-tag"><span class="dot"></span><span id="userTag">Anonymous</span></div>
+    <a class="exit-link" href="index.html">Ganti nama</a>
+  </div>
+
+  <div class="cam-wrap viewfinder" id="camWrap">
+    <span class="vf-tl"></span><span class="vf-tr"></span>
+    <span class="vf-bl"></span><span class="vf-br"></span>
+    <video id="video" autoplay playsinline muted></video>
+    <div class="flash-overlay" id="flashOverlay"></div>
+    <div class="cam-status" id="camStatus">Meminta akses kamera...</div>
+  </div>
+
+  <div class="filter-strip" id="filterStrip">
+    <button class="filter-chip active" data-filter="none" data-css="none">Normal</button>
+    <button class="filter-chip" data-filter="bw" data-css="grayscale(1) contrast(1.1)">B&amp;W</button>
+    <button class="filter-chip" data-filter="warm" data-css="sepia(0.35) saturate(1.4) contrast(1.05)">Warm</button>
+    <button class="filter-chip" data-filter="cool" data-css="saturate(1.2) hue-rotate(-8deg) contrast(1.05) brightness(1.05)">Cool</button>
+    <button class="filter-chip" data-filter="film" data-css="contrast(1.2) saturate(0.85) brightness(0.95) sepia(0.15)">Film</button>
+    <button class="filter-chip" data-filter="vivid" data-css="saturate(1.6) contrast(1.15)">Vivid</button>
+    <button class="filter-chip" data-filter="fade" data-css="contrast(0.85) brightness(1.1) saturate(0.7)">Fade</button>
+  </div>
+
+  <div class="shutter-row">
+    <button class="shutter-btn" id="shutterBtn" disabled><span class="inner"></span></button>
+  </div>
+</div>
+
+<!-- Review screen shown right after a snap -->
+<div class="review-overlay" id="reviewOverlay">
+  <div class="review-frame">
+    <img id="reviewImg" alt="hasil foto">
+    <div class="review-caption" id="reviewCaption"></div>
+  </div>
+  <div class="review-actions">
+    <button class="btn" id="retakeBtn">Ambil ulang</button>
+    <button class="btn btn-primary" id="sendBtn">Kirim ke wall</button>
+  </div>
+  <p class="upload-status" id="uploadStatus"></p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
+<script>
+  const username = sessionStorage.getItem('snapwall_username') || 'Anonymous';
+  document.getElementById('userTag').textContent = username;
+  document.getElementById('reviewCaption').textContent = username;
+
+  const video = document.getElementById('video');
+  const camStatus = document.getElementById('camStatus');
+  const shutterBtn = document.getElementById('shutterBtn');
+  const flashOverlay = document.getElementById('flashOverlay');
+  const canvas = document.getElementById('captureCanvas');
+  const filterStrip = document.getElementById('filterStrip');
+
+  const reviewOverlay = document.getElementById('reviewOverlay');
+  const reviewImg = document.getElementById('reviewImg');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const sendBtn = document.getElementById('sendBtn');
+  const uploadStatus = document.getElementById('uploadStatus');
+
+  let currentFilterCss = 'none';
+  let currentFilterName = 'none';
+  let capturedBlob = null;
+
+  // --- filter selection ---
+  filterStrip.addEventListener('click', (e) => {
+    const chip = e.target.closest('.filter-chip');
+    if (!chip) return;
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    currentFilterCss = chip.dataset.css;
+    currentFilterName = chip.dataset.filter;
+    video.style.filter = currentFilterCss;
+  });
+
+  // --- start camera ---
+  async function startCamera(){
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false
+      });
+      video.srcObject = stream;
+      camStatus.style.display = 'none';
+      shutterBtn.disabled = false;
+    }catch(err){
+      camStatus.textContent = 'Gak bisa akses kamera. Izinkan akses kamera di browser, lalu refresh halaman ini.';
+      console.error(err);
+    }
+  }
+  startCamera();
+
+  // --- snap ---
+  shutterBtn.addEventListener('click', () => {
+    flashOverlay.classList.remove('firing');
+    void flashOverlay.offsetWidth; // restart animation
+    flashOverlay.classList.add('firing');
+
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+
+    ctx.save();
+    ctx.filter = currentFilterCss;
+    // mirror to match what user sees in preview
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, w, h);
+    ctx.restore();
+
+    canvas.toBlob((blob) => {
+      capturedBlob = blob;
+      reviewImg.src = URL.createObjectURL(blob);
+      reviewOverlay.classList.add('show');
+      uploadStatus.textContent = '';
+    }, 'image/jpeg', 0.92);
+  });
+
+  retakeBtn.addEventListener('click', () => {
+    reviewOverlay.classList.remove('show');
+    capturedBlob = null;
+  });
+
+  sendBtn.addEventListener('click', async () => {
+    if (!capturedBlob) return;
+    sendBtn.disabled = true;
+    retakeBtn.disabled = true;
+    uploadStatus.textContent = 'Mengirim ke wall...';
+    try{
+      await uploadPhoto(capturedBlob, username, currentFilterName);
+      uploadStatus.textContent = 'Terkirim! Foto kamu muncul di layar besar.';
+      setTimeout(() => {
+        reviewOverlay.classList.remove('show');
+        capturedBlob = null;
+        sendBtn.disabled = false;
+        retakeBtn.disabled = false;
+      }, 1400);
+    }catch(err){
+      console.error(err);
+      uploadStatus.textContent = 'Gagal kirim. Cek koneksi, lalu coba lagi.';
+      sendBtn.disabled = false;
+      retakeBtn.disabled = false;
+    }
+  });
+</script>
+
+</body>
+</html>

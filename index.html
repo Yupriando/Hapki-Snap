@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SnapWall — masuk ke acara</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .landing-wrap{
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .entry-card{
+    width: 100%;
+    max-width: 420px;
+    padding: 48px 36px;
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+  }
+  .kicker{
+    font-size: 13px;
+    color: var(--graphite);
+    margin: 0 0 6px;
+  }
+  h1{
+    font-family: var(--font-display);
+    font-weight: 500;
+    font-size: 40px;
+    line-height: 1.05;
+    margin: 0 0 12px;
+    color: var(--paper);
+  }
+  h1 em{
+    font-style: italic;
+    color: var(--flash);
+  }
+  .sub{
+    color: var(--graphite);
+    font-size: 15px;
+    line-height: 1.5;
+    margin: 0 0 32px;
+    max-width: 34ch;
+  }
+  .mode-toggle{
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .mode-btn{
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--graphite);
+    font-size: 13px;
+    font-family: var(--font-ui);
+  }
+  .mode-btn.active{
+    border-color: var(--flash);
+    color: var(--paper);
+    background: rgba(255,61,87,0.08);
+  }
+  #nameField{ margin-bottom: 8px; }
+  .hint{
+    font-size: 12px;
+    color: var(--graphite-dim);
+    margin: 0 0 24px;
+    min-height: 16px;
+  }
+  .next-btn{
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="landing-wrap">
+  <div class="entry-card viewfinder">
+    <span class="vf-tl"></span><span class="vf-tr"></span>
+    <span class="vf-bl"></span><span class="vf-br"></span>
+
+    <p class="kicker">acara malam ini</p>
+    <h1>Snap<em>Wall</em></h1>
+    <p class="sub">Ambil foto, dan itu langsung muncul di layar besar buat semua orang lihat. Siapa namamu?</p>
+
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="modeNamed" type="button">Pakai nama</button>
+      <button class="mode-btn" id="modeAnon" type="button">Anonim</button>
+    </div>
+
+    <input class="field" id="nameField" type="text" placeholder="Nama kamu" maxlength="24" autocomplete="off">
+    <p class="hint" id="hintText">Nama ini akan muncul di bawah fotomu di layar besar.</p>
+
+    <button class="btn btn-primary next-btn" id="nextBtn" type="button">Lanjut ke kamera</button>
+  </div>
+</div>
+
+<script>
+  const modeNamed = document.getElementById('modeNamed');
+  const modeAnon = document.getElementById('modeAnon');
+  const nameField = document.getElementById('nameField');
+  const hintText = document.getElementById('hintText');
+  const nextBtn = document.getElementById('nextBtn');
+
+  let isAnon = false;
+
+  modeNamed.addEventListener('click', () => {
+    isAnon = false;
+    modeNamed.classList.add('active');
+    modeAnon.classList.remove('active');
+    nameField.style.display = 'block';
+    hintText.style.display = 'block';
+    nameField.focus();
+  });
+
+  modeAnon.addEventListener('click', () => {
+    isAnon = true;
+    modeAnon.classList.add('active');
+    modeNamed.classList.remove('active');
+    nameField.style.display = 'none';
+    hintText.textContent = 'Namamu akan muncul sebagai "Anonymous" di layar besar.';
+  });
+
+  nextBtn.addEventListener('click', () => {
+    let username = 'Anonymous';
+    if (!isAnon) {
+      const typed = nameField.value.trim();
+      if (!typed) {
+        nameField.focus();
+        hintText.textContent = 'Isi dulu namanya, atau pilih Anonim.';
+        hintText.style.color = 'var(--flash)';
+        return;
+      }
+      username = typed;
+    }
+    sessionStorage.setItem('snapwall_username', username);
+    window.location.href = 'camera.html';
+  });
+
+  nameField.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') nextBtn.click();
+  });
+</script>
+
+</body>
+</html>
