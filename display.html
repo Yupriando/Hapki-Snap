@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SnapWall — live wall</title>
+<title>HappySnap — live wall</title>
 <link rel="stylesheet" href="style.css">
 <style>
   html, body{ height: 100%; overflow: hidden; }
@@ -18,12 +18,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 24px 40px 4px;
+    padding: clamp(14px, 2.2vh, 26px) clamp(16px, 3vw, 40px) 4px;
     flex: 0 0 auto;
   }
   .wall-title{
     font-family: var(--font-display);
-    font-size: 26px;
+    font-size: clamp(18px, 2.6vh, 28px);
     font-weight: 500;
     margin: 0;
   }
@@ -33,7 +33,7 @@
     align-items: center;
     gap: 10px;
     color: var(--graphite);
-    font-size: 14px;
+    font-size: clamp(12px, 1.4vh, 14px);
   }
   .live-dot{
     width: 8px; height: 8px; border-radius: 50%;
@@ -45,148 +45,83 @@
     50%{ opacity: 0.3; }
   }
 
-  /* ---------------- Spotlight (big, auto-cycling) ---------------- */
-  .spotlight-wrap{
+  /* ---------------- Carousel rows ---------------- */
+  .rows{
     flex: 1;
     min-height: 0;
-    padding: 16px 40px;
     display: flex;
-    align-items: center;
+    flex-direction: column;
     justify-content: center;
+    gap: clamp(10px, 1.8vh, 22px);
+    padding: clamp(6px, 1vh, 16px) 0;
   }
-  .spotlight{
-    position: relative;
-    height: 100%;
-    max-width: 920px;
-    width: 100%;
-    background: #000;
-    overflow: hidden;
-  }
-  .spotlight-img-layer{
-    position: absolute;
-    inset: 0;
-  }
-  .spotlight-img-layer img{
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    background: #000;
-  }
-  .spotlight-img-layer{
-    opacity: 0;
-    transition: opacity 0.6s ease;
-  }
-  .spotlight-img-layer.active{ opacity: 1; }
-
-  .spotlight-cap{
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    padding: 28px 28px 20px;
-    background: linear-gradient(to top, rgba(0,0,0,0.75), transparent);
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    z-index: 3;
-  }
-  .spotlight-cap .name{
-    font-family: var(--font-display);
-    font-size: 26px;
-    color: var(--paper);
-  }
-  .spotlight-cap .badge-new{
-    font-size: 12px;
-    padding: 3px 10px;
-    background: var(--flash);
-    color: var(--ink);
-    font-weight: 700;
-    border-radius: 2px;
-    opacity: 0;
-    transform: translateY(4px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-  }
-  .spotlight-cap .badge-new.show{ opacity: 1; transform: translateY(0); }
-
-  .spotlight-progress{
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    display: flex;
-    gap: 4px;
-    padding: 10px 14px 0;
-    z-index: 3;
-  }
-  .spotlight-progress .seg{
-    flex: 1;
-    height: 3px;
-    background: rgba(255,255,255,0.2);
-    overflow: hidden;
-  }
-  .spotlight-progress .seg .fill{
-    height: 100%;
-    width: 0%;
-    background: var(--flash);
-  }
-  .spotlight-progress .seg.done .fill{ width: 100%; }
-  .spotlight-progress .seg.active .fill{
-    width: 100%;
-    transition: width linear;
-  }
-
-  /* ---------------- Marquee (bottom strip, always moving) ---------------- */
-  .marquee-viewport{
-    flex: 0 0 auto;
-    height: 190px;
+  .row-viewport{
     overflow: hidden;
     white-space: nowrap;
-    border-top: 1px solid var(--line);
-    padding: 16px 0;
-    mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
-    -webkit-mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
+    width: 100%;
+    mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 3%, black 97%, transparent);
   }
-  .marquee-track{
+  .row-track{
     display: inline-flex;
-    gap: 16px;
+    gap: clamp(12px, 1.8vw, 28px);
     will-change: transform;
-    animation-name: marquee-scroll;
     animation-timing-function: linear;
     animation-iteration-count: infinite;
   }
-  @keyframes marquee-scroll{
+  @keyframes scroll-left{
     from{ transform: translateX(0); }
     to{ transform: translateX(-50%); }
   }
-  .m-tile{
-    display: inline-block;
-    width: 200px;
-    height: 150px;
-    position: relative;
-    background: var(--paper);
-    padding: 6px 6px 22px;
-    flex: 0 0 auto;
+  @keyframes scroll-right{
+    from{ transform: translateX(-50%); }
+    to{ transform: translateX(0); }
   }
-  .m-tile img{
+
+  .tile{
+    display: inline-block;
+    position: relative;
+    flex: 0 0 auto;
+    background: var(--paper);
+    padding: clamp(5px, 0.6vw, 10px) clamp(5px, 0.6vw, 10px) clamp(20px, 2.6vh, 32px);
+    /* row height adapts to viewport height so 3 rows always fit */
+    height: calc((100vh - 130px) / 3.4);
+    width: calc(((100vh - 130px) / 3.4) * 1.32);
+    max-width: 46vw;
+  }
+  .tile img{
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
   }
-  .m-tile .cap{
+  .tile .cap{
     position: absolute;
-    bottom: 4px;
-    left: 8px;
-    right: 8px;
+    bottom: clamp(4px, 0.6vh, 8px);
+    left: 10px;
+    right: 10px;
     font-family: var(--font-display);
-    font-size: 12px;
+    font-size: clamp(11px, 1.4vh, 15px);
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .m-tile.fresh{
-    animation: freshpop 0.6s cubic-bezier(0.2,0.8,0.2,1);
-  }
+  .tile.fresh{ animation: freshpop 0.6s cubic-bezier(0.2,0.8,0.2,1); }
   @keyframes freshpop{
     0%{ opacity: 0; transform: scale(0.8) translateY(10px); }
     100%{ opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  /* Fewer / shorter rows on narrow or short screens so tiles don't
+     get squeezed into slivers on phones and small tablets. */
+  @media (max-width: 700px){
+    .row-viewport:nth-child(3){ display: none; }
+    .tile{ height: calc((100vh - 110px) / 2.4); }
+  }
+  @media (max-height: 480px) and (orientation: landscape){
+    .row-viewport:nth-child(3){ display: none; }
+    .tile{ height: calc((100vh - 90px) / 2.2); }
   }
 
   .empty-state{
@@ -197,10 +132,11 @@
     justify-content: center;
     text-align: center;
     color: var(--graphite);
+    padding: 24px;
   }
   .empty-state .big{
     font-family: var(--font-display);
-    font-size: 32px;
+    font-size: clamp(22px, 4vh, 32px);
     color: var(--paper);
     margin-bottom: 10px;
   }
@@ -210,30 +146,17 @@
 
 <div class="wall-shell">
   <div class="wall-header">
-    <h1 class="wall-title">Snap<em>Wall</em> — live</h1>
+    <h1 class="wall-title">Happy<em>Snap</em> — live</h1>
     <div class="wall-meta">
       <span class="live-dot"></span>
       <span id="countText" class="frame-counter">0 foto</span>
     </div>
   </div>
 
-  <div id="spotlightWrap" class="spotlight-wrap">
-    <div class="spotlight viewfinder" id="spotlight">
-      <span class="vf-tl"></span><span class="vf-tr"></span>
-      <span class="vf-bl"></span><span class="vf-br"></span>
-      <div class="spotlight-progress" id="spotlightProgress"></div>
-      <!-- two layers cross-fade between each other -->
-      <div class="spotlight-img-layer" id="layerA"><img id="imgA" alt=""></div>
-      <div class="spotlight-img-layer" id="layerB"><img id="imgB" alt=""></div>
-      <div class="spotlight-cap">
-        <span class="name" id="spotlightName"></span>
-        <span class="badge-new" id="badgeNew">baru saja</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="marquee-viewport" id="marqueeViewport">
-    <div class="marquee-track" id="marqueeTrack"></div>
+  <div id="rows" class="rows">
+    <div class="row-viewport"><div class="row-track" id="track0"></div></div>
+    <div class="row-viewport"><div class="row-track" id="track1"></div></div>
+    <div class="row-viewport"><div class="row-track" id="track2"></div></div>
   </div>
 
   <div id="emptyState" class="empty-state" style="display:none;">
@@ -245,26 +168,29 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
 <script>
-  // ---------- shared state ----------
-  const MAX_TRACKED = 60;       // cap how many photos we keep in memory
-  const SPOTLIGHT_INTERVAL = 5000; // ms per spotlight photo
-  const MARQUEE_SPEED = 55;     // px per second
+  const MAX_TRACKED = 90;
+  const ROW_SPEED = 42; // px per second, kept consistent across all rows
 
-  let photos = [];              // newest first
+  // Each row scrolls a different direction/speed multiple so the
+  // wall feels alive rather than three identical conveyor belts.
+  const ROW_CONFIG = [
+    { dir: 'scroll-left',  speedMult: 1.0 },
+    { dir: 'scroll-right', speedMult: 0.85 },
+    { dir: 'scroll-left',  speedMult: 1.15 }
+  ];
+
+  let photos = [];          // newest first, overall
   const knownIds = new Set();
+  const rowBuckets = [[], [], []]; // photos distributed round-robin across rows
 
   const countText = document.getElementById('countText');
   const emptyState = document.getElementById('emptyState');
-  const spotlightWrap = document.getElementById('spotlightWrap');
-  const marqueeViewport = document.getElementById('marqueeViewport');
-  const marqueeTrack = document.getElementById('marqueeTrack');
-  const spotlightName = document.getElementById('spotlightName');
-  const badgeNew = document.getElementById('badgeNew');
-  const spotlightProgress = document.getElementById('spotlightProgress');
-  const layerA = document.getElementById('layerA');
-  const layerB = document.getElementById('layerB');
-  const imgA = document.getElementById('imgA');
-  const imgB = document.getElementById('imgB');
+  const rowsEl = document.getElementById('rows');
+  const tracks = [
+    document.getElementById('track0'),
+    document.getElementById('track1'),
+    document.getElementById('track2')
+  ];
 
   function escapeHtml(str){
     const div = document.createElement('div');
@@ -276,85 +202,12 @@
     const hasPhotos = photos.length > 0;
     countText.textContent = `${photos.length} foto`;
     emptyState.style.display = hasPhotos ? 'none' : 'flex';
-    spotlightWrap.style.display = hasPhotos ? 'flex' : 'none';
-    marqueeViewport.style.display = hasPhotos ? 'block' : 'none';
+    rowsEl.style.display = hasPhotos ? 'flex' : 'none';
   }
 
-  // ================= SPOTLIGHT =================
-  let spotlightIndex = 0;
-  let usingLayerA = true;
-  let spotlightTimer = null;
-  let progressStart = null;
-
-  function buildProgressSegments(){
-    spotlightProgress.innerHTML = '';
-    const n = Math.min(photos.length, 10); // don't clutter with too many dots
-    for (let i = 0; i < n; i++){
-      const seg = document.createElement('div');
-      seg.className = 'seg';
-      seg.innerHTML = '<div class="fill"></div>';
-      spotlightProgress.appendChild(seg);
-    }
-  }
-
-  function renderProgress(){
-    const segs = spotlightProgress.querySelectorAll('.seg');
-    segs.forEach((seg, i) => {
-      seg.classList.remove('active', 'done');
-      const fill = seg.querySelector('.fill');
-      fill.style.transition = 'none';
-      fill.style.width = '0%';
-      if (i < spotlightIndex) seg.classList.add('done');
-    });
-    if (segs[spotlightIndex]){
-      const seg = segs[spotlightIndex];
-      const fill = seg.querySelector('.fill');
-      seg.classList.add('active');
-      requestAnimationFrame(() => {
-        fill.style.transition = `width ${SPOTLIGHT_INTERVAL}ms linear`;
-        fill.style.width = '100%';
-      });
-    }
-  }
-
-  function showSpotlight(index, opts){
-    opts = opts || {};
-    if (photos.length === 0) return;
-    spotlightIndex = ((index % photos.length) + photos.length) % photos.length;
-    const photo = photos[spotlightIndex];
-
-    const nextLayer = usingLayerA ? layerB : layerA;
-    const nextImg = usingLayerA ? imgB : imgA;
-    const prevLayer = usingLayerA ? layerA : layerB;
-
-    nextImg.src = photo.photo_url;
-    nextLayer.classList.add('active');
-    prevLayer.classList.remove('active');
-    usingLayerA = !usingLayerA;
-
-    spotlightName.textContent = photo.username;
-
-    if (opts.isFresh){
-      badgeNew.classList.add('show');
-      setTimeout(() => badgeNew.classList.remove('show'), 2200);
-    } else {
-      badgeNew.classList.remove('show');
-    }
-
-    if (spotlightIndex < 10) renderProgress();
-  }
-
-  function restartSpotlightTimer(){
-    if (spotlightTimer) clearInterval(spotlightTimer);
-    spotlightTimer = setInterval(() => {
-      showSpotlight(spotlightIndex + 1);
-    }, SPOTLIGHT_INTERVAL);
-  }
-
-  // ================= MARQUEE =================
-  function buildMarqueeTile(photo, isFresh){
+  function buildTile(photo, isFresh){
     const div = document.createElement('div');
-    div.className = 'm-tile' + (isFresh ? ' fresh' : '');
+    div.className = 'tile' + (isFresh ? ' fresh' : '');
     div.innerHTML = `
       <img src="${photo.photo_url}" alt="foto dari ${escapeHtml(photo.username)}" loading="lazy">
       <div class="cap">${escapeHtml(photo.username)}</div>
@@ -362,29 +215,35 @@
     return div;
   }
 
-  function rebuildMarquee(freshId){
-    marqueeTrack.style.animation = 'none';
-    marqueeTrack.innerHTML = '';
+  function rebuildRow(rowIndex, freshId){
+    const track = tracks[rowIndex];
+    const list = rowBuckets[rowIndex];
+    track.style.animation = 'none';
+    track.innerHTML = '';
+    if (list.length === 0) return;
 
-    if (photos.length === 0) return;
+    const doubled = list.concat(list);
+    doubled.forEach(photo => track.appendChild(buildTile(photo, photo.id === freshId)));
 
-    // Duplicate the list so the strip loops seamlessly.
-    const doubled = photos.concat(photos);
-    doubled.forEach(photo => {
-      marqueeTrack.appendChild(buildMarqueeTile(photo, photo.id === freshId));
-    });
-
-    // Measure one full set's width to keep scroll speed constant
-    // regardless of how many photos are currently loaded.
+    const cfg = ROW_CONFIG[rowIndex];
     requestAnimationFrame(() => {
-      const fullWidth = marqueeTrack.scrollWidth / 2;
-      const duration = Math.max(fullWidth / MARQUEE_SPEED, 6);
-      marqueeTrack.style.animationDuration = `${duration}s`;
-      marqueeTrack.style.animation = `marquee-scroll ${duration}s linear infinite`;
+      const fullWidth = track.scrollWidth / 2;
+      const speed = ROW_SPEED * cfg.speedMult;
+      const duration = Math.max(fullWidth / speed, 6);
+      track.style.animation = `${cfg.dir} ${duration}s linear infinite`;
     });
   }
 
-  // ================= DATA FLOW =================
+  function redistributeRows(freshId){
+    rowBuckets[0] = [];
+    rowBuckets[1] = [];
+    rowBuckets[2] = [];
+    photos.forEach((p, i) => rowBuckets[i % 3].push(p));
+    rebuildRow(0, freshId);
+    rebuildRow(1, freshId);
+    rebuildRow(2, freshId);
+  }
+
   function addNewPhoto(photo){
     if (knownIds.has(photo.id)) return;
     knownIds.add(photo.id);
@@ -393,12 +252,8 @@
       const removed = photos.pop();
       knownIds.delete(removed.id);
     }
-
     updateVisibility();
-    buildProgressSegments();
-    rebuildMarquee(photo.id);
-    showSpotlight(0, { isFresh: true });
-    restartSpotlightTimer();
+    redistributeRows(photo.id);
   }
 
   async function loadInitial(){
@@ -406,14 +261,8 @@
       const initial = await fetchVisiblePhotos();
       photos = initial.slice(0, MAX_TRACKED);
       photos.forEach(p => knownIds.add(p.id));
-
       updateVisibility();
-      buildProgressSegments();
-      rebuildMarquee(null);
-      if (photos.length > 0){
-        showSpotlight(0);
-        restartSpotlightTimer();
-      }
+      redistributeRows(null);
     }catch(err){
       console.error(err);
       countText.textContent = 'Gagal muat foto';
@@ -423,20 +272,25 @@
   // Realtime: instant updates when Supabase Realtime is enabled on the table.
   subscribeToNewPhotos((photo) => addNewPhoto(photo));
 
-  // Polling fallback: catches anything realtime misses (e.g. replication
-  // not enabled yet, or a dropped websocket), so the wall still updates
-  // itself automatically within a few seconds either way.
+  // Polling fallback: catches anything realtime misses.
   const POLL_INTERVAL = 8000;
   setInterval(async () => {
     try{
       const latest = await fetchVisiblePhotos();
       const fresh = latest.filter(p => !knownIds.has(p.id));
-      // oldest-first so the newest ends up spotlighted last
       fresh.reverse().forEach(p => addNewPhoto(p));
     }catch(err){
       console.error('poll refresh failed', err);
     }
   }, POLL_INTERVAL);
+
+  // Rows are sized with vh-based math; recompute the scroll timing
+  // (not just CSS) if the window is resized/rotated so speed stays right.
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => redistributeRows(null), 300);
+  });
 
   loadInitial();
 </script>
