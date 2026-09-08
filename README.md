@@ -58,13 +58,13 @@ The last several (Sunset Glow, Neon Nights, Arctic Frost, the two Duotones, Drea
 ```
 `wash` and `blend` are optional — omit both for a plain color-adjustment filter.
 
-## The live wall (display.html): a rotating photo sphere
+## The live wall (display.html): a rotating ring carousel
 
-Photos are arranged over a slowly rotating sphere (using a Fibonacci-sphere point distribution, the same technique used for evenly spacing points on a globe), with a gentle wobble on top of the spin so it doesn't feel mechanical. Photos toward the front appear larger and fully bright; photos on the far side shrink and dim slightly, giving real depth.
+Photos are arranged evenly around a single circle, viewed at a fixed tilt so the whole thing reads as an orbiting ring — like a Ferris wheel or carousel of photos — rather than a straight line or a full 3D sphere. Photos toward the front appear larger and fully bright; photos on the far side of the ring shrink and dim slightly, giving a sense of depth as it turns.
 
-This uses a **fixed set of 44 "slots"** positioned once on the sphere — their positions never move. As new photos arrive, they're assigned round-robin into the next slot (replacing whatever was there before) with a quick brightness "pop" so they're easy to spot. This design is what fixed an earlier ticker-carousel bug where fast-arriving photos could visually glitch/overlap: since slots are fixed and only the *image inside* a slot changes, there's no more DOM insertion/removal racing with layout measurement on every frame.
+This uses a **fixed set of 24 "slots"** positioned once around the ring — their positions never move. As new photos arrive, they're assigned round-robin into the next slot (replacing whatever was there before) with a quick brightness "pop" so they're easy to spot. This design is what fixed an earlier ticker-carousel bug where fast-arriving photos could visually glitch/overlap: since slots are fixed and only the *image inside* a slot changes, there's no more DOM insertion/removal racing with layout measurement on every frame.
 
-Fully responsive: the sphere's radius and tile size are computed from the container's own measured width/height (`getBoundingClientRect`), recalculated on resize/orientation change — so it scales correctly on phones, tablets, monitors, or a TV without hard-coded breakpoints.
+Fully responsive: the ring's radius and tile size are computed from the container's own measured width/height (`getBoundingClientRect`), recalculated on resize/orientation change — so it scales correctly on phones, tablets, monitors, or a TV without hard-coded breakpoints.
 
 Auto-refresh still has two layers:
 1. **Realtime** (instant) via Supabase — requires the `photos` table to have replication enabled, which `schema.sql` already includes.
@@ -72,9 +72,9 @@ Auto-refresh still has two layers:
 
 Easy constants to tweak in `display.html`:
 ```js
-const SLOT_COUNT = 44;      // how many photos are visible on the sphere at once
-const ROTATE_SPEED = 0.22;  // spin speed, radians/second
-const TILT_AMOUNT = 0.20;   // how much the sphere wobbles up/down
+const RING_COUNT = 24;      // how many photos are visible on the ring at once
+const ROTATE_SPEED = 0.28;  // spin speed, radians/second
+const TILT_ANGLE = 0.5;     // how tilted/elliptical the ring looks (0 = flat line, larger = rounder)
 ```
 
 ## How the photo flow works
