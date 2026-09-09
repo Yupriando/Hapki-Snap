@@ -48,7 +48,13 @@
     font-size: 28px;
     margin: 0;
   }
-  .admin-tools{ display: flex; gap: 10px; align-items: center; }
+  .admin-tools{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .download-status{
+    font-size: 12px;
+    color: var(--graphite);
+    min-width: 0;
+  }
+  .btn-ghost:disabled{ opacity: 0.5; cursor: default; }
   .admin-grid{
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -94,6 +100,8 @@
     <h1>Manage Photos</h1>
     <div class="admin-tools">
       <span class="frame-counter" id="adminCount">0 photos</span>
+      <span class="download-status" id="downloadStatus"></span>
+      <button class="btn btn-ghost" id="downloadAllBtn">Download all</button>
       <button class="btn btn-ghost" id="logoutBtn">Sign out</button>
     </div>
   </div>
@@ -103,6 +111,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-client.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <script>
   const loginWrap = document.getElementById('loginWrap');
   const dashboard = document.getElementById('dashboard');
@@ -114,6 +123,8 @@
   const adminGrid = document.getElementById('adminGrid');
   const adminEmpty = document.getElementById('adminEmpty');
   const adminCount = document.getElementById('adminCount');
+  const downloadAllBtn = document.getElementById('downloadAllBtn');
+  const downloadStatus = document.getElementById('downloadStatus');
 
   async function checkSession(){
     const { data } = await supabaseClient.auth.getSession();
@@ -216,6 +227,92 @@
         console.error(err);
         deleteBtn.disabled = false;
       }
+    }
+  });
+
+  function sanitizeFilename(name){
+    const cleaned = name.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '');
+    return cleaned || 'photo';
+  }
+
+  // Fetches items with a limited number of requests in flight at
+  // once (rather than one-at-a-time, which is slow for a big event,
+  // or all-at-once, which can overwhelm the browser/network).
+  async function mapWithConcurrency(items, limit, worker){
+    const results = new Array(items.length);
+    let nextIndex = 0;
+    async function runNext(){
+      while (nextIndex < items.length){
+        const i = nextIndex++;
+        results[i] = await worker(items[i], i);
+      }
+    }
+    const runners = Array.from({ length: Math.min(limit, items.length) }, runNext);
+    await Promise.all(runners);
+    return results;
+  }
+
+  downloadAllBtn.addEventListener('click', async () => {
+    downloadAllBtn.disabled = true;
+    downloadStatus.textContent = 'Loading photo list...';
+    try{
+      const photos = await fetchAllPhotosAdmin();
+      if (photos.length === 0){
+        downloadStatus.textContent = 'No photos to download.';
+        setTimeout(() => { downloadStatus.textContent = ''; }, 2500);
+        return;
+      }
+
+      const zip = new JSZip();
+      const usedNames = new Set();
+      let done = 0;
+      let failed = 0;
+      downloadStatus.textContent = `Downloading 0/${photos.length}...`;
+
+      await mapWithConcurrency(photos, 6, async (photo) => {
+        try{
+          const res = await fetch(photo.photo_url);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const blob = await res.blob();
+
+          let base = sanitizeFilename(photo.username) + '-' + photo.id.slice(0, 8);
+          let name = base + '.jpg';
+          let n = 1;
+          while (usedNames.has(name)){ name = `${base}-${n++}.jpg`; }
+          usedNames.add(name);
+
+          zip.file(name, blob);
+        }catch(err){
+          console.error('Failed to fetch photo for zip:', photo.id, err);
+          failed++;
+        }finally{
+          done++;
+          downloadStatus.textContent = `Downloading ${done}/${photos.length}...`;
+        }
+      });
+
+      downloadStatus.textContent = 'Zipping...';
+      const content = await zip.generateAsync({ type: 'blob' });
+
+      const dateStamp = new Date().toISOString().slice(0, 10);
+      const url = URL.createObjectURL(content);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `hapkisnap-photos-${dateStamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      downloadStatus.textContent = failed > 0
+        ? `Done — ${failed} photo${failed === 1 ? '' : 's'} couldn't be fetched.`
+        : 'Download ready!';
+      setTimeout(() => { downloadStatus.textContent = ''; }, 4000);
+    }catch(err){
+      console.error(err);
+      downloadStatus.textContent = 'Failed to prepare download.';
+    }finally{
+      downloadAllBtn.disabled = false;
     }
   });
 
