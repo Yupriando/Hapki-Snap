@@ -53,7 +53,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: clamp(8px, 1.6vh, 20px);
+    gap: clamp(10px, 2vh, 26px);
     padding: clamp(10px, 1.6vh, 22px) 0;
   }
   .row-viewport{
@@ -62,77 +62,67 @@
     position: relative;
     overflow: hidden;
     mask-image: linear-gradient(to right,
-      transparent 0%,
-      rgba(0,0,0,0.45) 5%,
-      black 14%,
-      black 86%,
-      rgba(0,0,0,0.45) 95%,
-      transparent 100%);
+      transparent 0%, rgba(0,0,0,0.4) 4%, black 12%,
+      black 88%, rgba(0,0,0,0.4) 96%, transparent 100%);
     -webkit-mask-image: linear-gradient(to right,
-      transparent 0%,
-      rgba(0,0,0,0.45) 5%,
-      black 14%,
-      black 86%,
-      rgba(0,0,0,0.45) 95%,
-      transparent 100%);
+      transparent 0%, rgba(0,0,0,0.4) 4%, black 12%,
+      black 88%, rgba(0,0,0,0.4) 96%, transparent 100%);
   }
-  .row-track{
+  .row-track{ position: absolute; inset: 0; }
+
+  /* Outer element: JS moves this every frame (position only).
+     It never gets a CSS animation, so there's nothing for the
+     per-frame transform to fight with. */
+  .tile{
     position: absolute;
-    top: 0; left: 0;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    gap: clamp(10px, 1.6vw, 26px);
+    top: 50%;
+    left: 0;
     will-change: transform;
   }
 
-  .tile{
+  /* Inner element: static per-tile rotation/scale set once at
+     creation time via the --rot custom property, plus the
+     one-time entrance animation. JS never touches this element. */
+  .tile-card{
     position: relative;
-    height: 78%;
-    aspect-ratio: 4 / 3;
-    flex: 0 0 auto;
+    width: 100%;
+    height: 100%;
     background: var(--paper);
-    padding: clamp(4px, 0.6vw, 9px) clamp(4px, 0.6vw, 9px) clamp(16px, 2.6vh, 28px);
-    transform: var(--jitter, none);
+    padding: 5% 5% 17%;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+    transform: rotate(var(--rot, 0deg));
   }
-  .tile img{ width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tile .cap{
+  .tile-card img{ width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile-card .cap{
     position: absolute;
-    bottom: clamp(3px, 0.5vh, 7px);
-    left: 9px;
-    right: 9px;
+    bottom: 6%;
+    left: 8%;
+    right: 8%;
     font-family: var(--font-display);
     letter-spacing: 0.02em;
-    font-size: clamp(11px, 1.7vh, 18px);
+    font-size: clamp(12px, 1.8vh, 18px);
+    font-weight: 400;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tile.fresh{ animation: freshpop 0.75s cubic-bezier(0.16, 1, 0.3, 1); }
+  .tile-card.fresh{ animation: freshpop 0.6s cubic-bezier(0.2, 0.9, 0.25, 1); }
   @keyframes freshpop{
     0%{
       opacity: 0;
-      filter: brightness(1.9) blur(9px);
-      transform: var(--jitter, none) scale(0.68) rotate(-9deg);
-      box-shadow: 0 0 46px 12px rgba(255,255,255,0.55);
-    }
-    45%{
-      opacity: 1;
-      filter: brightness(1.15) blur(0px);
-      transform: var(--jitter, none) scale(1.06) rotate(2deg);
-      box-shadow: 0 0 20px 5px rgba(255,255,255,0.28);
+      filter: brightness(1.8) blur(6px);
+      transform: rotate(var(--rot, 0deg)) scale(0.72);
+      box-shadow: 0 0 34px 8px rgba(255,255,255,0.5);
     }
     100%{
       opacity: 1;
       filter: brightness(1) blur(0px);
-      transform: var(--jitter, none) scale(1) rotate(0deg);
-      box-shadow: 0 0 0 0 rgba(255,255,255,0);
+      transform: rotate(var(--rot, 0deg)) scale(1);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
     }
   }
 
-  /* Fewer rows on narrow or short screens: remaining rows use the
-     freed-up space automatically since they're flex:1. */
   @media (max-width: 700px){
     .row-viewport:nth-child(3){ display: none; }
   }
@@ -189,15 +179,36 @@
 <script src="supabase-client.js"></script>
 <script>
   // ============================================================
-  // Ticker-style carousel: photos flow in from the right edge and
-  // exit at the left, continuously, like a news ticker. New photos
-  // are appended live to the end of a row's queue, so they arrive
-  // in order from the right rather than the wall jumping/resetting.
+  // Straight ticker carousel, right-to-left, 3 rows — designed to
+  // comfortably show a large, ever-growing number of guest photos
+  // over the course of an event.
+  //
+  // Every tile's position is plain JS arithmetic (a running
+  // cumulative-x per row), never read back from the DOM inside the
+  // animation loop. That's the fix for the earlier glitch: reading
+  // getBoundingClientRect() every frame in a tight loop raced with
+  // layout timing and could show two tiles overlapping for a frame.
+  // Here there is nothing to race — position is just addition.
+  //
+  // Rotation/scale ("pinned photo" look) lives on a separate inner
+  // element that JS never touches, so it can't conflict with the
+  // per-frame position transform on the outer element.
+  //
+  // Each row keeps its own shuffled "lap" through its assigned
+  // photos so the same photo doesn't repeat back-to-back, which
+  // matters once a row is cycling through only a handful of photos
+  // early in an event.
   // ============================================================
 
   const NUM_ROWS = 3;
-  const SPEED_PX_PER_SEC = 55;
-  const BUFFER_MULTIPLIER = 1.15; // keep this many viewport-widths of content queued ahead
+  const BASE_SPEED = 52;                    // px/second
+  const ROW_SPEED_MULT = [1, 0.86, 1.14];   // subtle per-row variety, same direction
+  const BUFFER_MULTIPLIER = 1.3;
+
+  const WIDTH_JITTER = [0.9, 1.08];   // tile height multiplier range (kept tighter, and capped so it can never exceed the row)
+  const GAP_JITTER = [0.7, 1.5];      // gap multiplier range
+  const ROTATION_RANGE = 3.2;         // degrees, +/-
+  const MAX_ROW_FILL = 0.9;           // a tile's height never exceeds this fraction of the row's height
 
   const countText = document.getElementById('countText');
   const emptyState = document.getElementById('emptyState');
@@ -206,11 +217,15 @@
   const rows = [0, 1, 2].map(i => ({
     viewport: document.querySelectorAll('.row-viewport')[i],
     track: document.getElementById('track' + i),
-    queue: [],       // [{ el, photo }] left-to-right DOM order
-    sourcePool: [],  // unique photos assigned to this row
-    lapQueue: [],    // shuffled, not-yet-shown-this-lap photos
+    speedMult: ROW_SPEED_MULT[i],
+    queue: [],        // [{ el, x, width, vOffset }] in append order
+    sourcePool: [],   // unique photos assigned to this row
+    lapQueue: [],     // shuffled, not-yet-shown-this-lap photos
     lastServed: null,
-    offset: 0
+    offset: 0,
+    baseGap: 0,
+    rowHeight: 0,
+    viewportWidth: 0
   }));
 
   let totalPhotoCount = 0;
@@ -222,47 +237,7 @@
     return div.innerHTML;
   }
 
-  function updateVisibility(){
-    const hasPhotos = totalPhotoCount > 0;
-    countText.textContent = `${totalPhotoCount} photo${totalPhotoCount === 1 ? '' : 's'}`;
-    emptyState.style.display = hasPhotos ? 'none' : 'flex';
-    rowsEl.style.display = hasPhotos ? 'flex' : 'none';
-  }
-
-  function randomBetween(min, max){
-    return Math.random() * (max - min) + min;
-  }
-
-  function buildTile(photo, isFresh){
-    const div = document.createElement('div');
-    div.className = 'tile' + (isFresh ? ' fresh' : '');
-    div.innerHTML = `
-      <img src="${photo.photo_url}" alt="photo from ${escapeHtml(photo.username)}" loading="lazy">
-      <div class="cap">${escapeHtml(photo.username)}</div>
-    `;
-
-    // Scatter each tile slightly so the wall doesn't look like a
-    // perfectly ruled grid: a little rotation, a vertical nudge and
-    // a small size variance, like snapshots pinned up by hand.
-    const rot = randomBetween(-4.5, 4.5).toFixed(2);
-    const yJitter = randomBetween(-16, 16).toFixed(1);
-    const scale = randomBetween(0.88, 1.06).toFixed(3);
-    div.style.zIndex = String(Math.round(randomBetween(1, 10)));
-    div.style.marginLeft = `${randomBetween(6, 34).toFixed(1)}px`;
-    div.style.marginRight = `${randomBetween(6, 34).toFixed(1)}px`;
-
-    return div;
-  }
-
-  function appendTile(row, photo, isFresh){
-    const el = buildTile(photo, isFresh);
-    row.track.appendChild(el);
-    row.queue.push({ el, photo });
-  }
-
-  function isRowVisible(row){
-    return row.viewport.offsetParent !== null;
-  }
+  function rand(min, max){ return min + Math.random() * (max - min); }
 
   function shuffle(arr){
     const a = arr.slice();
@@ -273,17 +248,29 @@
     return a;
   }
 
-  // Pulls the next photo to display in this row. Each photo is shown
-  // once per shuffled "lap" through the row's pool, and we just make
-  // sure the same photo never lands immediately back-to-back across
-  // a lap boundary. We deliberately do NOT block on a photo already
-  // being visible elsewhere in the row — that produced real empty
-  // gaps in the belt when a row's pool was small, which read as
-  // tiles just vanishing instead of being replaced. Keeping the belt
-  // continuously fed is what sells the "exits left, re-enters right"
-  // illusion; keeping duplicates from looking cluttered is handled
-  // instead by spacing tiles further apart (see buildTile's random
-  // margins) and a modest BUFFER_MULTIPLIER.
+  function updateVisibility(){
+    const hasPhotos = totalPhotoCount > 0;
+    countText.textContent = `${totalPhotoCount} photo${totalPhotoCount === 1 ? '' : 's'}`;
+    emptyState.style.display = hasPhotos ? 'none' : 'flex';
+    rowsEl.style.display = hasPhotos ? 'flex' : 'none';
+  }
+
+  function isRowVisible(row){
+    return row.viewport.offsetParent !== null;
+  }
+
+  function measureRow(row){
+    const rect = row.viewport.getBoundingClientRect();
+    row.rowHeight = rect.height;
+    row.viewportWidth = rect.width;
+    row.baseGap = row.rowHeight * 0.24;
+  }
+
+  function measureAllRows(){ rows.forEach(measureRow); }
+
+  // Pulls the next photo for a row: shuffles a fresh lap through the
+  // row's pool whenever the previous lap runs out, and swaps the
+  // first pick if it would repeat the very last photo shown.
   function nextFromPool(row){
     if (row.lapQueue.length === 0){
       if (row.sourcePool.length === 0) return null;
@@ -298,67 +285,72 @@
     return photo;
   }
 
+  function appendTileToRow(row, photo, isFresh){
+    // Height is randomized but capped so a tile can never be taller
+    // than the row itself — that's what was clipping the caption
+    // strip off the bottom of some tiles before (overflow:hidden on
+    // the row cut it away). Width is derived from height, keeping
+    // every tile the same 4:3-ish look regardless of size.
+    const height = row.rowHeight * MAX_ROW_FILL * rand(WIDTH_JITTER[0], WIDTH_JITTER[1]);
+    const width = height / 0.76;
+    const gapBefore = row.queue.length === 0 ? 0 : row.baseGap * rand(GAP_JITTER[0], GAP_JITTER[1]);
+    const prev = row.queue[row.queue.length - 1];
+    // A row with nothing in it yet starts its first tile off past
+    // the right edge, so it glides in instead of popping into view.
+    const x = prev ? prev.x + prev.width + gapBefore : (row.viewportWidth || 0);
+    // Vertical wiggle is limited to whatever slack is left after the
+    // tile's own height, so it can never push the tile (or its
+    // caption) outside the row's visible bounds.
+    const slack = Math.max(0, (row.rowHeight - height) / 2) * 0.85;
+    const vOffset = rand(-slack, slack);
+    const rot = rand(-ROTATION_RANGE, ROTATION_RANGE);
+
+    const outer = document.createElement('div');
+    outer.className = 'tile';
+    outer.style.width = width + 'px';
+    outer.style.height = height + 'px';
+
+    const card = document.createElement('div');
+    card.className = 'tile-card' + (isFresh ? ' fresh' : '');
+    card.style.setProperty('--rot', rot.toFixed(2) + 'deg');
+    card.innerHTML = `
+      <img src="${photo.photo_url}" alt="photo from ${escapeHtml(photo.username)}" loading="lazy">
+      <div class="cap">${escapeHtml(photo.username)}</div>
+    `;
+    outer.appendChild(card);
+    row.track.appendChild(outer);
+
+    row.queue.push({ el: outer, x, width, vOffset });
+  }
+
   function ensureBuffer(row){
-    if (row.sourcePool.length === 0) return;
-    const viewportWidth = row.viewport.clientWidth || 0;
-    if (viewportWidth === 0) return;
-
-    // In practice this should rarely fire now, since we refill
-    // continuously below — but it's a safety net for edge cases.
-    resetOffsetIfEmpty(row);
-
-    // Keep the belt topped up to a modest buffer of width queued
-    // ahead on screen, refilling immediately whenever there's room —
-    // no artificial delay. That's what makes a tile exiting on the
-    // left feel like it's replaced right away by one entering on the
-    // right, instead of the row going quiet for a moment.
+    if (row.sourcePool.length === 0 || row.rowHeight === 0) return;
     let guard = 0;
     while (guard++ < 40){
-      const viewportRect = row.viewport.getBoundingClientRect();
-      const trackRect = row.track.getBoundingClientRect();
-      const aheadWidth = trackRect.right - viewportRect.right;
-      if (aheadWidth > viewportWidth * BUFFER_MULTIPLIER) break;
+      const last = row.queue[row.queue.length - 1];
+      const rightEdge = last ? last.x + last.width + row.offset : row.offset;
+      if (rightEdge > row.viewportWidth * BUFFER_MULTIPLIER) break;
       const nextPhoto = nextFromPool(row);
       if (!nextPhoto) break;
-      appendTile(row, nextPhoto, false);
+      appendTileToRow(row, nextPhoto, false);
     }
   }
 
-  function recycle(row){
-    if (row.queue.length === 0) return;
-    const viewportRect = row.viewport.getBoundingClientRect();
+  function recycleRow(row){
     let guard = 0;
     while (row.queue.length && guard++ < 40){
-      const firstEl = row.queue[0].el;
-      const rect = firstEl.getBoundingClientRect();
-      if (rect.right < viewportRect.left){
-        row.track.removeChild(firstEl);
+      const first = row.queue[0];
+      const rightEdgeOnScreen = first.x + first.width + row.offset;
+      if (rightEdgeOnScreen < 0){
+        row.track.removeChild(first.el);
         row.queue.shift();
       } else break;
     }
   }
 
-  // Whenever we're about to append into a row that currently has no
-  // tiles at all, make sure the track's offset is put back at "just
-  // past the right edge" first. Without this, a row that starts
-  // completely empty (e.g. before any photos have loaded) still has
-  // its offset sitting at 0, so the very first tiles appended land
-  // right inside the visible area instead of gliding in from the
-  // right — which is exactly what made the initial batch (and any
-  // photo arriving after a row went empty) look like it "just
-  // popped in" all together instead of entering naturally.
-  function resetOffsetIfEmpty(row){
-    if (row.queue.length === 0){
-      const vw = row.viewport.clientWidth || 0;
-      row.offset = vw;
-      row.track.style.transform = `translateX(${row.offset}px)`;
-    }
-  }
-
   function addPhotoToRow(row, photo, isFresh){
     row.sourcePool.push(photo);
-    resetOffsetIfEmpty(row);
-    appendTile(row, photo, isFresh);
+    appendTileToRow(row, photo, isFresh);
   }
 
   function addNewPhoto(photo){
@@ -366,7 +358,6 @@
     knownIds.add(photo.id);
     totalPhotoCount++;
     updateVisibility();
-
     const rowIndex = (totalPhotoCount - 1) % NUM_ROWS;
     addPhotoToRow(rows[rowIndex], photo, true);
   }
@@ -388,10 +379,8 @@
     }
   }
 
-  // Realtime: instant updates when Supabase Realtime is enabled on the table.
   subscribeToNewPhotos((photo) => addNewPhoto(photo));
 
-  // Polling fallback: catches anything realtime misses.
   const POLL_INTERVAL = 8000;
   setInterval(async () => {
     try{
@@ -403,20 +392,31 @@
     }
   }, POLL_INTERVAL);
 
+  measureAllRows();
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(measureAllRows, 250);
+  });
+
   // ---------------- main animation loop ----------------
   let lastTs = null;
   function tick(ts){
     if (lastTs === null) lastTs = ts;
-    const dt = Math.min((ts - lastTs) / 1000, 0.1); // clamp to avoid big jumps on tab refocus
+    const dt = Math.min((ts - lastTs) / 1000, 0.1);
     lastTs = ts;
 
     rows.forEach(row => {
-      if (!isRowVisible(row)) return;
-      if (row.queue.length > 0){
-        row.offset -= SPEED_PX_PER_SEC * dt;
-        row.track.style.transform = `translateX(${row.offset}px)`;
-        recycle(row);
-      }
+      if (!isRowVisible(row) || row.rowHeight === 0) return;
+
+      row.offset -= BASE_SPEED * row.speedMult * dt;
+
+      row.queue.forEach(item => {
+        const screenX = item.x + row.offset;
+        item.el.style.transform = `translate(${screenX}px, calc(-50% + ${item.vOffset}px))`;
+      });
+
+      recycleRow(row);
       ensureBuffer(row);
     });
 
