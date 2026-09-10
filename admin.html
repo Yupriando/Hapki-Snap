@@ -19,6 +19,7 @@
     padding: 40px 32px;
     background: var(--ink-raised);
     border: 1px solid var(--line);
+    border-radius: var(--radius);
   }
   .login-card h1{
     font-family: var(--font-display);
@@ -61,7 +62,12 @@
     gap: 18px;
     padding: 24px clamp(16px, 3vw, 40px) 60px;
   }
-  .admin-tile{ background: var(--ink-raised); border: 1px solid var(--line); }
+  .admin-tile{
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
   .admin-tile img{ width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
   .admin-tile.hidden-photo{ opacity: 0.45; }
   .admin-tile .meta{ padding: 10px 12px; font-size: 13px; }
@@ -73,6 +79,7 @@
     padding: 8px;
     font-size: 12px;
     border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
     background: transparent;
     color: var(--paper);
   }

@@ -8,6 +8,22 @@
 <style>
   html, body{ height: 100%; overflow: hidden; }
 
+  /* Mascot wallpaper support: drop your image in as
+     "mascot-background.png" next to this file (or edit the path
+     below) and it'll show as a dimmed backdrop behind the wall.
+     If the file isn't there yet, this simply falls back to the
+     plain background — nothing breaks. */
+  body{
+    background-image:
+      linear-gradient(rgba(19,18,20,0.55), rgba(19,18,20,0.55)),
+      radial-gradient(ellipse at 15% -10%, rgba(217,30,54,0.10), transparent 55%),
+      radial-gradient(ellipse at 90% 110%, rgba(37,87,199,0.10), transparent 50%),
+      url('mascot-background.png');
+    background-size: cover, auto, auto, cover;
+    background-position: center, center, center, center;
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+  }
+
   .wall-shell{
     height: 100vh;
     height: 100dvh;
@@ -89,10 +105,11 @@
     height: 100%;
     background: var(--paper);
     padding: 5% 5% 17%;
+    border-radius: var(--radius);
     box-shadow: 0 10px 24px rgba(0,0,0,0.35);
     transform: rotate(var(--rot, 0deg));
   }
-  .tile-card img{ width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile-card img{ width: 100%; height: 100%; object-fit: cover; display: block; border-radius: calc(var(--radius) * 0.4); }
   .tile-card .cap{
     position: absolute;
     bottom: 6%;

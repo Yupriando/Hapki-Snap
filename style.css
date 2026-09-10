@@ -22,7 +22,8 @@
   --font-display: 'Bebas Neue', 'Arial Narrow', sans-serif;
   --font-ui: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
 
-  --radius: 2px;
+  --radius-sm: 9px;
+  --radius: 16px;
 }
 
 *{ box-sizing: border-box; }
@@ -63,10 +64,10 @@ button{ font-family: var(--font-ui); cursor: pointer; }
   border-width: 0;
   pointer-events: none;
 }
-.viewfinder .vf-tl{ top: -1px; left: -1px; border-top-width: 3px; border-left-width: 3px; }
-.viewfinder .vf-tr{ top: -1px; right: -1px; border-top-width: 3px; border-right-width: 3px; }
-.viewfinder .vf-bl{ bottom: -1px; left: -1px; border-bottom-width: 3px; border-left-width: 3px; }
-.viewfinder .vf-br{ bottom: -1px; right: -1px; border-bottom-width: 3px; border-right-width: 3px; }
+.viewfinder .vf-tl{ top: -1px; left: -1px; border-top-width: 3px; border-left-width: 3px; border-top-left-radius: 8px; }
+.viewfinder .vf-tr{ top: -1px; right: -1px; border-top-width: 3px; border-right-width: 3px; border-top-right-radius: 8px; }
+.viewfinder .vf-bl{ bottom: -1px; left: -1px; border-bottom-width: 3px; border-left-width: 3px; border-bottom-left-radius: 8px; }
+.viewfinder .vf-br{ bottom: -1px; right: -1px; border-bottom-width: 3px; border-right-width: 3px; border-bottom-right-radius: 8px; }
 
 /* ---------- Belt stripe (red + blue) ----------
    A small recurring flourish under headlines, referencing the
