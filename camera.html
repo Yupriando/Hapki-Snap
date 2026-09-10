@@ -113,6 +113,28 @@
         z-index: 50;
         transition: opacity 0.12s ease;
       }
+      .grain-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0;
+        mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+        background-size: 180px 180px;
+        z-index: 2;
+        transition: opacity 0.15s ease;
+      }
+      .grain-overlay.active {
+        opacity: 0.3;
+      }
+      .cam-wrap.vignette::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        box-shadow: inset 0 0 90px 26px rgba(0, 0, 0, 0.55);
+        z-index: 2;
+      }
       .cam-status {
         position: absolute;
         inset: 0;
@@ -128,13 +150,13 @@
 
       .zoom-controls {
         position: absolute;
-        right: 14px;
-        top: 50%;
-        transform: translateY(-50%);
+        left: 50%;
+        bottom: 14px;
+        transform: translateX(-50%);
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         align-items: center;
-        gap: 8px;
+        gap: 10px;
         z-index: 4;
       }
       .zoom-btn {
@@ -335,16 +357,8 @@
         <span class="vf-bl"></span><span class="vf-br"></span>
         <video id="video" autoplay playsinline muted></video>
         <div class="color-wash" id="colorWash"></div>
+        <div class="grain-overlay" id="grainOverlay"></div>
         <div class="zoom-controls">
-          <button
-            class="zoom-btn"
-            id="zoomInBtn"
-            type="button"
-            aria-label="Zoom in"
-          >
-            +
-          </button>
-          <span class="zoom-label" id="zoomLabel">1.0×</span>
           <button
             class="zoom-btn"
             id="zoomOutBtn"
@@ -352,6 +366,15 @@
             aria-label="Zoom out"
           >
             −
+          </button>
+          <span class="zoom-label" id="zoomLabel">1.0×</span>
+          <button
+            class="zoom-btn"
+            id="zoomInBtn"
+            type="button"
+            aria-label="Zoom in"
+          >
+            +
           </button>
         </div>
         <div class="flash-overlay" id="flashOverlay"></div>
@@ -503,10 +526,27 @@
           wash: "rgba(255,210,80,0.2)",
           blend: "multiply",
         },
+        {
+          label: "Disposable Cam",
+          css: "contrast(1.2) saturate(1.35) brightness(1.05) sepia(0.12)",
+          wash: "rgba(255,170,60,0.16)",
+          blend: "overlay",
+          grain: true,
+          vignette: true,
+        },
+        {
+          label: "Disposable Flash",
+          css: "contrast(1.3) brightness(1.18) saturate(1.05)",
+          wash: "rgba(255,255,255,0.14)",
+          blend: "screen",
+          grain: true,
+          vignette: true,
+        },
       ];
 
       const video = document.getElementById("video");
       const colorWash = document.getElementById("colorWash");
+      const grainOverlay = document.getElementById("grainOverlay");
       const camStatus = document.getElementById("camStatus");
       const shutterBtn = document.getElementById("shutterBtn");
       const flashOverlay = document.getElementById("flashOverlay");
@@ -551,6 +591,8 @@
         video.style.filter = f.css;
         colorWash.style.background = f.wash || "transparent";
         colorWash.style.mixBlendMode = f.blend || "normal";
+        grainOverlay.classList.toggle("active", !!f.grain);
+        camWrap.classList.toggle("vignette", !!f.vignette);
       }
 
       filterStrip.addEventListener("click", (e) => {
@@ -568,7 +610,12 @@
       function updateVideoTransform() {
         const mirror = currentFacingMode === "user" ? -1 : 1;
         video.style.transform = `scaleX(${mirror}) scale(${zoomLevel})`;
-        zoomLabel.textContent = zoomLevel.toFixed(1) + "×";
+        // The back camera's actual field of view looks like a ~0.5x wide
+        // lens at zoomLevel 1, so only its displayed label is offset —
+        // the front camera keeps showing the true 1.0x zoom level.
+        const displayZoom =
+          currentFacingMode === "environment" ? zoomLevel * 0.5 : zoomLevel;
+        zoomLabel.textContent = displayZoom.toFixed(1) + "×";
       }
 
       function setZoom(level) {
@@ -648,6 +695,21 @@
         });
       }
 
+      // Adds subtle random noise to the captured photo so "Disposable Cam"
+      // style filters actually look grainy in the saved image, not just
+      // in the live preview.
+      function addGrain(ctx, w, h) {
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const data = imgData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const noise = (Math.random() - 0.5) * 28;
+          data[i] += noise;
+          data[i + 1] += noise;
+          data[i + 2] += noise;
+        }
+        ctx.putImageData(imgData, 0, 0);
+      }
+
       // ---------------- camera ----------------
       async function startCamera(facingMode) {
         if (currentStream) {
@@ -693,10 +755,22 @@
         startCamera(next);
       });
 
+      function backCameraHasTorch() {
+        const track = currentStream && currentStream.getVideoTracks()[0];
+        if (!track || !track.getCapabilities) return false;
+        return !!track.getCapabilities().torch;
+      }
+
       shutterBtn.addEventListener("click", async () => {
         // Front camera has no physical flash, so a bright full-screen
         // flash stands in for it — timed just before the frame is grabbed.
-        if (flashOn && currentFacingMode === "user") {
+        // Many browsers (e.g. iOS Safari) never expose the torch API for
+        // the back camera either, so fall back to the same screen-flash
+        // there too, otherwise pressing "flash" would visibly do nothing.
+        if (
+          flashOn &&
+          (currentFacingMode === "user" || !backCameraHasTorch())
+        ) {
           await triggerScreenFlash(220);
         }
 
@@ -734,7 +808,26 @@
           ctx.fillRect(0, 0, w, h);
           ctx.globalCompositeOperation = "source-over";
         }
+
+        if (currentFilter.vignette) {
+          const grad = ctx.createRadialGradient(
+            w / 2,
+            h / 2,
+            Math.min(w, h) * 0.35,
+            w / 2,
+            h / 2,
+            Math.min(w, h) * 0.72,
+          );
+          grad.addColorStop(0, "rgba(0,0,0,0)");
+          grad.addColorStop(1, "rgba(0,0,0,0.55)");
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, w, h);
+        }
         ctx.restore();
+
+        if (currentFilter.grain) {
+          addGrain(ctx, w, h);
+        }
 
         canvas.toBlob(
           (blob) => {
