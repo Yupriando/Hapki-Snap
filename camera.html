@@ -528,15 +528,58 @@
         },
         {
           label: "Disposable Camera",
-          // Live-preview approximation only — the exact preset math
-          // (contrast/shadows/blacks/temp/vibrance/color-grading/vignette/
-          // grain) runs per-pixel on the actual photo in applyDisposableCameraGrade().
-          css: "contrast(1.22) saturate(0.68) sepia(0.08) hue-rotate(-4deg) brightness(0.98)",
-          preset: "disposableCamera",
+          // Live-preview approximation only — the real Fuji-film color
+          // science (warm/green cast, lifted milky blacks, soft highlight
+          // rolloff, teal shadow tint) runs per-pixel via applyFilmGrade().
+          css: "contrast(1.05) saturate(0.85) sepia(0.14) hue-rotate(-8deg) brightness(1.02)",
+          preset: "fujiDisposable",
+          filmOpts: {
+            exposure: 1.0,
+            blackLift: 0.05,
+            highlightMode: "soft",
+            highlightAmt: 0.12,
+            warmR: 10,
+            warmG: 4,
+            warmB: -12,
+            contrast: 1.08,
+            sat: 0.82,
+            hiTint: 0.05,
+            shTint: 0.12,
+            shadowColor: [70, 150, 150],
+          },
           vignette: true,
           vignetteInner: 0.5,
           vignetteOuter: 1.0,
-          vignetteAlpha: 0.3,
+          vignetteAlpha: 0.28,
+          grain: true,
+          grainAmount: 30,
+        },
+        {
+          label: "Disposable Camera Flash",
+          // Mimics a disposable camera's built-in flash firing: subject
+          // blown bright and warm, background falls into cool near-black
+          // very quickly, harder contrast, stronger corner falloff.
+          css: "contrast(1.28) saturate(0.78) brightness(1.14) sepia(0.1)",
+          preset: "fujiDisposableFlash",
+          filmOpts: {
+            exposure: 1.18,
+            blackLift: 0.0,
+            highlightMode: "blown",
+            highlightAmt: 0.35,
+            warmR: 16,
+            warmG: 4,
+            warmB: -18,
+            contrast: 1.28,
+            sat: 0.78,
+            hiTint: 0.1,
+            shTint: 0.3,
+            shadowColor: [20, 40, 70],
+          },
+          hotspot: true,
+          vignette: true,
+          vignetteInner: 0.32,
+          vignetteOuter: 0.85,
+          vignetteAlpha: 0.5,
           grain: true,
           grainAmount: 24,
         },
@@ -697,68 +740,62 @@
         return v < 0 ? 0 : v > 255 ? 255 : v;
       }
 
-      // Tone curve approximating: Highlights 12, Shadows 40, Whites -6, Blacks -65
-      function lrToneCurve(v) {
-        // Blacks -65: crush near-black tones
-        v -= 0.3 * Math.exp(-Math.pow((v - 0.02) / 0.09, 2)) * v;
-        // Shadows +40: lift lower-mid tones
-        v += 0.16 * Math.exp(-Math.pow((v - 0.2) / 0.2, 2));
-        // Highlights +12: gently recover/brighten upper-mid tones
-        v += 0.06 * Math.exp(-Math.pow((v - 0.78) / 0.2, 2));
-        // Whites -6: pull the very brightest values down a touch
-        v -= 0.05 * Math.pow(v, 8);
+      // Soft highlight rolloff (ambient "Disposable Camera") vs. an
+      // aggressive blowout curve (the "Flash" version, mimicking direct
+      // on-camera flash overexposing whatever it hits).
+      function filmCurve(v, opts) {
+        // Lifted blacks: a faded, milky film floor (skipped for the flash
+        // shot, where the unlit background should stay genuinely dark).
+        v = v + opts.blackLift * (1 - v);
+        if (opts.highlightMode === "blown") {
+          v += opts.highlightAmt * Math.pow(Math.max(0, v - 0.55) / 0.45, 3);
+        } else {
+          v -= opts.highlightAmt * Math.pow(Math.max(0, v - 0.7) / 0.3, 2);
+        }
         return v < 0 ? 0 : v > 1 ? 1 : v;
       }
 
-      // Applies the exact "Disposable Camera" preset values from the
-      // screenshot (Contrast 30, Highlights 12, Shadows 40, Whites -6,
-      // Blacks -65, Temp 14, Vibrance 10, Saturation -40, Color Mix
-      // Orange Hue 15/Sat 36, Color Grading Highlights Hue 313/Sat 10 +
-      // Shadows Hue 175/Sat 20, Clarity -10, Dehaze 45) directly on the
-      // captured photo's pixels. Vignette and Grain are handled separately
-      // right after this runs, using the filter's vignette*/grain* fields.
-      function applyDisposableCameraGrade(ctx, w, h) {
+      // Shared Fuji-film-style grading used by both "Disposable Camera"
+      // and "Disposable Camera Flash". `opts` (filter.filmOpts) is what
+      // tells the two filters apart: exposure, tone curve, warm/green
+      // color cast, contrast, saturation, and highlight/shadow tinting.
+      function applyFilmGrade(ctx, w, h, opts) {
         const imgData = ctx.getImageData(0, 0, w, h);
         const d = imgData.data;
-
-        // Contrast +30, Dehaze +45 (adds contrast) and Clarity -10
-        // (softens local contrast) combined into one net contrast factor.
-        const contrast = 1.34;
-        // Temp +14: gentle warm push (more red, less blue).
-        const warmR = 9,
-          warmB = -9;
-        // Saturation -40 softened by Vibrance +10.
-        const satFactor = 0.68;
+        const [scR, scG, scB] = opts.shadowColor;
 
         for (let i = 0; i < d.length; i += 4) {
-          let r = lrToneCurve(d[i] / 255) * 255;
-          let g = lrToneCurve(d[i + 1] / 255) * 255;
-          let b = lrToneCurve(d[i + 2] / 255) * 255;
+          let r = d[i] * opts.exposure;
+          let g = d[i + 1] * opts.exposure;
+          let b = d[i + 2] * opts.exposure;
 
-          r += warmR;
-          b += warmB;
+          r = filmCurve(r / 255, opts) * 255;
+          g = filmCurve(g / 255, opts) * 255;
+          b = filmCurve(b / 255, opts) * 255;
 
-          r = (r - 128) * contrast + 128;
-          g = (g - 128) * contrast + 128;
-          b = (b - 128) * contrast + 128;
+          // Warm yellow-green cast, characteristic of consumer Fuji film.
+          r += opts.warmR;
+          g += opts.warmG;
+          b += opts.warmB;
+
+          r = (r - 128) * opts.contrast + 128;
+          g = (g - 128) * opts.contrast + 128;
+          b = (b - 128) * opts.contrast + 128;
 
           const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-          // Color Mix Orange Hue 15/Sat 36: extra saturation boost for
-          // orange/skin-tone pixels only.
-          const isOrange = r > g && g > b && r - b > 25;
-          const localSat = isOrange ? satFactor * 1.25 : satFactor;
-          r = lum + (r - lum) * localSat;
-          g = lum + (g - lum) * localSat;
-          b = lum + (b - lum) * localSat;
+          r = lum + (r - lum) * opts.sat;
+          g = lum + (g - lum) * opts.sat;
+          b = lum + (b - lum) * opts.sat;
 
-          // Color Grading: magenta tint on highlights (Hue 313/Sat 10),
-          // teal tint on shadows (Hue 175/Sat 20), weighted by luminance.
+          // Split tone: warm highlights, cool/teal shadows — stronger on
+          // the flash version so the flash-lit subject stays warm while
+          // the unlit background sinks toward cool near-black.
           const l01 = lum / 255;
-          const hiWeight = Math.pow(Math.max(0, l01 - 0.5) * 2, 2) * 0.1;
-          const shWeight = Math.pow(Math.max(0, 0.5 - l01) * 2, 2) * 0.2;
-          r = r + (255 - r) * hiWeight + (30 - r) * shWeight;
-          g = g + (60 - g) * hiWeight + (190 - g) * shWeight;
-          b = b + (200 - b) * hiWeight + (190 - b) * shWeight;
+          const hiW = Math.pow(Math.max(0, l01 - 0.5) * 2, 2) * opts.hiTint;
+          const shW = Math.pow(Math.max(0, 0.5 - l01) * 2, 2) * opts.shTint;
+          r = r + (255 - r) * hiW * 0.4 + (scR - r) * shW;
+          g = g + (240 - g) * hiW * 0.4 + (scG - g) * shW;
+          b = b + (200 - b) * hiW * 0.4 + (scB - b) * shW;
 
           d[i] = clamp255(r);
           d[i + 1] = clamp255(g);
@@ -884,9 +921,12 @@
         const sy = (vh - sh) / 2;
 
         ctx.save();
-        // "Disposable Camera" is graded precisely per-pixel afterwards
-        // (applyDisposableCameraGrade), so skip the CSS approximation here.
-        if (currentFilter.preset !== "disposableCamera") {
+        // Both Fuji-style filters are graded precisely per-pixel afterwards
+        // (applyFilmGrade), so skip the CSS approximation here.
+        const isFilmPreset =
+          currentFilter.preset === "fujiDisposable" ||
+          currentFilter.preset === "fujiDisposableFlash";
+        if (!isFilmPreset) {
           ctx.filter = currentFilter.css;
         }
         if (currentFacingMode === "user") {
@@ -904,8 +944,27 @@
         }
         ctx.restore();
 
-        if (currentFilter.preset === "disposableCamera") {
-          applyDisposableCameraGrade(ctx, w, h);
+        if (isFilmPreset) {
+          applyFilmGrade(ctx, w, h, currentFilter.filmOpts);
+        }
+
+        if (currentFilter.hotspot) {
+          // Warm glow near the center, mimicking the beam of a built-in
+          // flash — drawn before the vignette so the corners still darken.
+          const hotGrad = ctx.createRadialGradient(
+            w / 2,
+            h / 2,
+            0,
+            w / 2,
+            h / 2,
+            Math.min(w, h) * 0.55,
+          );
+          hotGrad.addColorStop(0, "rgba(255,240,210,0.18)");
+          hotGrad.addColorStop(1, "rgba(255,240,210,0)");
+          ctx.globalCompositeOperation = "screen";
+          ctx.fillStyle = hotGrad;
+          ctx.fillRect(0, 0, w, h);
+          ctx.globalCompositeOperation = "source-over";
         }
 
         if (currentFilter.vignette) {
