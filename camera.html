@@ -280,6 +280,14 @@
         background: var(--flash);
         border-color: var(--flash);
       }
+      /* Shown when flash is on for the back camera but the real hardware
+         torch couldn't be verified as engaged — the app falls back to
+         brightening the photo digitally instead. */
+      .side-btn.active.torch-unsupported {
+        background: var(--ink-raised);
+        border-color: var(--flash);
+        color: var(--flash);
+      }
 
       .review-overlay {
         position: fixed;
@@ -702,22 +710,57 @@
       });
 
       // ---------------- flash (torch on back camera, screen-flash on front) ----------------
+      // Tracks whether the torch is *actually* on right now — not just
+      // whether the browser claims to support it. Some Android/Chrome +
+      // camera-hardware combinations report `torch` as a supported
+      // capability but silently fail to switch the LED when asked, so we
+      // verify the real result via getSettings() rather than trusting
+      // getCapabilities() alone.
+      let torchEngaged = false;
+
       async function updateTorch() {
-        if (!currentStream) return;
+        if (!currentStream) {
+          torchEngaged = false;
+          return;
+        }
         const track = currentStream.getVideoTracks()[0];
-        if (!track || !track.getCapabilities) return;
+        if (!track || !track.getCapabilities) {
+          torchEngaged = false;
+          return;
+        }
         const caps = track.getCapabilities();
-        if (caps.torch) {
+        const wantTorch = flashOn && currentFacingMode === "environment";
+        if (!caps.torch) {
+          torchEngaged = false;
+          return;
+        }
+
+        const tryApply = async () => {
           try {
-            await track.applyConstraints({
-              advanced: [
-                { torch: flashOn && currentFacingMode === "environment" },
-              ],
-            });
+            await track.applyConstraints({ advanced: [{ torch: wantTorch }] });
+            // Give the camera hardware a beat, then check what actually
+            // took effect instead of assuming applyConstraints worked.
+            await new Promise((r) => setTimeout(r, 150));
+            const settings = track.getSettings ? track.getSettings() : {};
+            return wantTorch ? settings.torch === true : true;
           } catch (err) {
             console.warn("Torch control not available:", err);
+            return false;
           }
+        };
+
+        let ok = await tryApply();
+        if (!ok && wantTorch) {
+          // Some Android camera stacks need a brief moment after the
+          // constraint call before the LED actually engages — retry once.
+          await new Promise((r) => setTimeout(r, 250));
+          ok = await tryApply();
         }
+        torchEngaged = ok;
+        flashBtn.classList.toggle(
+          "torch-unsupported",
+          flashOn && currentFacingMode === "environment" && !torchEngaged,
+        );
       }
 
       flashBtn.addEventListener("click", () => {
@@ -878,12 +921,6 @@
         startCamera(next);
       });
 
-      function backCameraHasTorch() {
-        const track = currentStream && currentStream.getVideoTracks()[0];
-        if (!track || !track.getCapabilities) return false;
-        return !!track.getCapabilities().torch;
-      }
-
       shutterBtn.addEventListener("click", async () => {
         // Front camera has no physical flash, so a bright full-screen
         // flash stands in for it — the screen faces the subject in a
@@ -893,13 +930,16 @@
         }
         // For the back camera the screen faces the photographer, not the
         // subject, so a screen-flash there wouldn't actually light anything
-        // up — it would just be a fake animation. If real torch control
-        // isn't available (true on iOS Safari, which never exposes torch
-        // to web pages — this is an Apple/OS restriction, not something
-        // fixable from this app's code), we instead digitally brighten the
-        // captured photo below as the closest real substitute.
+        // up — it would just be a fake animation. If the real torch isn't
+        // actually engaged right now — either because the browser/OS never
+        // exposes it (true on iOS Safari, an Apple restriction, not
+        // something fixable from this app's code) or because this device's
+        // camera hardware silently failed to switch it on (some Android/
+        // Chrome combinations) — we digitally brighten the captured photo
+        // below as the closest real substitute. torchEngaged is verified
+        // in updateTorch(), not just assumed from getCapabilities().
         const needsExposureBoost =
-          flashOn && currentFacingMode === "environment" && !backCameraHasTorch();
+          flashOn && currentFacingMode === "environment" && !torchEngaged;
 
         flashOverlay.classList.remove("firing");
         void flashOverlay.offsetWidth;
