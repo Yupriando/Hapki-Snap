@@ -288,6 +288,22 @@
         border-color: var(--flash);
         color: var(--flash);
       }
+      .torch-debug {
+        display: none;
+        font-size: 11px;
+        line-height: 1.5;
+        color: var(--graphite-dim);
+        background: var(--ink-raised);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 8px 10px;
+        margin: 0 20px 8px;
+        white-space: pre-wrap;
+        font-family: monospace;
+      }
+      .torch-debug.show {
+        display: block;
+      }
 
       .review-overlay {
         position: fixed;
@@ -393,6 +409,8 @@
         <p class="filter-row-label">Filters</p>
         <div class="filter-strip" id="filterStrip"></div>
       </div>
+
+      <div class="torch-debug" id="torchDebug"></div>
 
       <div class="shutter-row">
         <button
@@ -709,6 +727,8 @@
         pinchStartDist = null;
       });
 
+      const torchDebug = document.getElementById("torchDebug");
+
       // ---------------- flash (torch on back camera, screen-flash on front) ----------------
       // Tracks whether the torch is *actually* on right now — not just
       // whether the browser claims to support it. Some Android/Chrome +
@@ -718,6 +738,18 @@
       // getCapabilities() alone.
       let torchEngaged = false;
 
+      function showTorchDebug(lines) {
+        // Diagnostic only — visible while the back camera + flash are on,
+        // so we can see exactly why the LED does or doesn't engage on a
+        // given device. Remove this panel once the cause is confirmed.
+        if (currentFacingMode === "environment" && flashOn) {
+          torchDebug.textContent = lines.join("\n");
+          torchDebug.classList.add("show");
+        } else {
+          torchDebug.classList.remove("show");
+        }
+      }
+
       async function updateTorch() {
         if (!currentStream) {
           torchEngaged = false;
@@ -726,15 +758,22 @@
         const track = currentStream.getVideoTracks()[0];
         if (!track || !track.getCapabilities) {
           torchEngaged = false;
+          showTorchDebug(["getCapabilities() not supported on this browser at all."]);
           return;
         }
         const caps = track.getCapabilities();
         const wantTorch = flashOn && currentFacingMode === "environment";
         if (!caps.torch) {
           torchEngaged = false;
+          showTorchDebug([
+            "caps.torch: not present",
+            "→ this browser/device never advertises torch support.",
+            "All caps: " + JSON.stringify(caps),
+          ]);
           return;
         }
 
+        let lastError = null;
         const tryApply = async () => {
           try {
             await track.applyConstraints({ advanced: [{ torch: wantTorch }] });
@@ -742,25 +781,35 @@
             // took effect instead of assuming applyConstraints worked.
             await new Promise((r) => setTimeout(r, 150));
             const settings = track.getSettings ? track.getSettings() : {};
-            return wantTorch ? settings.torch === true : true;
+            return { ok: wantTorch ? settings.torch === true : true, settings };
           } catch (err) {
+            lastError = err;
             console.warn("Torch control not available:", err);
-            return false;
+            return { ok: false, settings: null };
           }
         };
 
-        let ok = await tryApply();
-        if (!ok && wantTorch) {
+        let result = await tryApply();
+        let retried = false;
+        if (!result.ok && wantTorch) {
           // Some Android camera stacks need a brief moment after the
           // constraint call before the LED actually engages — retry once.
+          retried = true;
           await new Promise((r) => setTimeout(r, 250));
-          ok = await tryApply();
+          result = await tryApply();
         }
-        torchEngaged = ok;
+        torchEngaged = result.ok;
         flashBtn.classList.toggle(
           "torch-unsupported",
-          flashOn && currentFacingMode === "environment" && !torchEngaged,
+          wantTorch && !torchEngaged,
         );
+        showTorchDebug([
+          "caps.torch: present",
+          "applyConstraints error: " + (lastError ? lastError.name + " — " + lastError.message : "none"),
+          "retried: " + retried,
+          "settings.torch after attempt: " + (result.settings ? result.settings.torch : "n/a"),
+          "→ torch engaged: " + torchEngaged,
+        ]);
       }
 
       flashBtn.addEventListener("click", () => {
