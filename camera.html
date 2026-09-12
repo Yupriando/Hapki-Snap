@@ -1084,13 +1084,13 @@
         // For the back camera the screen faces the photographer, not the
         // subject, so a screen-flash there wouldn't actually light anything
         // up — it would just be a fake animation. If the real torch isn't
-        // actually engaged right now — either because the browser/OS never
-        // exposes it (true on iOS Safari, an Apple restriction, not
-        // something fixable from this app's code) or because this device's
-        // camera hardware silently failed to switch it on (some Android/
-        // Chrome combinations) — we digitally brighten the captured photo
-        // below as the closest real substitute. torchEngaged is verified
-        // in updateTorch(), not just assumed from getCapabilities().
+        // actually engaged right now — either because this browser/device
+        // never exposes torch capability at all (varies by phone; Safari on
+        // iOS 17.5+ does support it, but plenty of Android camera stacks
+        // still don't) or because it silently failed to switch on — we
+        // digitally brighten the captured photo below as the closest real
+        // substitute. torchEngaged is verified in updateTorch(), not just
+        // assumed from getCapabilities().
         const needsExposureBoost =
           flashOn && currentFacingMode === "environment" && !torchEngaged;
 
