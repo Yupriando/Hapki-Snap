@@ -767,7 +767,8 @@
           torchEngaged = false;
           showTorchDebug([
             "caps.torch: not present",
-            "→ this browser/device never advertises torch support.",
+            "active lens: " + (activeCameraLabel || "(label hidden)"),
+            "→ tried other rear lenses via enumerateDevices, none exposed torch.",
             "All caps: " + JSON.stringify(caps),
           ]);
           return;
@@ -805,6 +806,7 @@
         );
         showTorchDebug([
           "caps.torch: present",
+          "active lens: " + (activeCameraLabel || "(label hidden)"),
           "applyConstraints error: " + (lastError ? lastError.name + " — " + lastError.message : "none"),
           "retried: " + retried,
           "settings.torch after attempt: " + (result.settings ? result.settings.torch : "n/a"),
@@ -925,6 +927,74 @@
         ctx.putImageData(imgData, 0, 0);
       }
 
+      // Tracks which physical lens (by label) ended up being used, purely
+      // for the on-screen debug panel — helps diagnose which lens got
+      // picked on a given Android device.
+      let activeCameraLabel = "";
+
+      // Some Android phones expose several rear lenses (main, ultra-wide,
+      // macro, telephoto) as separate getUserMedia devices, and only the
+      // main lens is wired to the physical LED flash. `facingMode:
+      // "environment"` alone lets the browser/OS pick any of them, so if
+      // the one it picked has no torch, we probe the other rear lenses
+      // one at a time (stopping each before trying the next, since most
+      // Android camera stacks refuse to have two lenses open at once) and
+      // switch to the first one that actually reports `caps.torch`.
+      async function findAndUseTorchCapableBackCamera(fallbackStream) {
+        const fallbackTrack = fallbackStream.getVideoTracks()[0];
+        const fallbackCaps = fallbackTrack.getCapabilities
+          ? fallbackTrack.getCapabilities()
+          : {};
+        if (fallbackCaps.torch) return fallbackStream;
+
+        let devices;
+        try {
+          devices = await navigator.mediaDevices.enumerateDevices();
+        } catch (err) {
+          return fallbackStream;
+        }
+        const videoInputs = devices.filter((d) => d.kind === "videoinput");
+        if (videoInputs.length <= 1) return fallbackStream;
+
+        const fallbackSettings = fallbackTrack.getSettings
+          ? fallbackTrack.getSettings()
+          : {};
+        const fallbackDeviceId = fallbackSettings.deviceId;
+
+        for (const dev of videoInputs) {
+          if (dev.deviceId === fallbackDeviceId) continue;
+          // Skip anything whose label plainly says it's a front lens —
+          // saves a pointless open/close round trip on phones that list
+          // the front camera in the same device list.
+          if (/front|user|face/i.test(dev.label)) continue;
+
+          let candidateStream;
+          try {
+            candidateStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                deviceId: { exact: dev.deviceId },
+                width: { ideal: 1280 },
+                height: { ideal: 960 },
+              },
+              audio: false,
+            });
+          } catch (err) {
+            continue;
+          }
+          const track = candidateStream.getVideoTracks()[0];
+          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          if (
+            caps.torch &&
+            !(caps.facingMode && caps.facingMode.includes("user"))
+          ) {
+            fallbackStream.getTracks().forEach((t) => t.stop());
+            return candidateStream;
+          }
+          candidateStream.getTracks().forEach((t) => t.stop());
+        }
+        return fallbackStream;
+      }
+
       // ---------------- camera ----------------
       async function startCamera(facingMode) {
         if (currentStream) {
@@ -935,7 +1005,7 @@
         camStatus.textContent = "Requesting camera access...";
         shutterBtn.disabled = true;
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
+          let stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: facingMode },
               width: { ideal: 1280 },
@@ -943,8 +1013,13 @@
             },
             audio: false,
           });
+          if (facingMode === "environment") {
+            stream = await findAndUseTorchCapableBackCamera(stream);
+          }
           currentStream = stream;
           currentFacingMode = facingMode;
+          const activeTrack = stream.getVideoTracks()[0];
+          activeCameraLabel = activeTrack ? activeTrack.label : "";
           video.srcObject = stream;
           updateVideoTransform();
           camStatus.style.display = "none";
