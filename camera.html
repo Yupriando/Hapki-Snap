@@ -739,15 +739,11 @@
       let torchEngaged = false;
 
       function showTorchDebug(lines) {
-        // Diagnostic only — visible while the back camera + flash are on,
-        // so we can see exactly why the LED does or doesn't engage on a
-        // given device. Remove this panel once the cause is confirmed.
-        if (currentFacingMode === "environment" && flashOn) {
-          torchDebug.textContent = lines.join("\n");
-          torchDebug.classList.add("show");
-        } else {
-          torchDebug.classList.remove("show");
-        }
+        // Cause confirmed (device never exposes torch capability at all),
+        // so this no longer needs to be shown on-screen to end users —
+        // kept as a console log only, in case it's needed again later.
+        console.log("[torch debug]\n" + lines.join("\n"));
+        torchDebug.classList.remove("show");
       }
 
       async function updateTorch() {
@@ -898,19 +894,52 @@
         ctx.putImageData(imgData, 0, 0);
       }
 
-      // A plain digital brightness/contrast boost used to stand in for a
-      // real back-camera flash on devices where the browser cannot fire
-      // the actual hardware flash (see updateTorch / shutter handler below).
+      // A digital stand-in for a real back-camera flash, used on devices
+      // where the browser can't fire the actual hardware torch (see
+      // updateTorch / shutter handler below). Beyond a plain brightness
+      // boost, this adds a warm hotspot glow near the center — mimicking
+      // how a real flash lights the subject brightest at the point it's
+      // aimed — plus a touch of edge falloff, since a physical flash
+      // rarely lights the whole frame evenly.
       function simulateExposureBoost(ctx, w, h) {
         const imgData = ctx.getImageData(0, 0, w, h);
         const d = imgData.data;
         for (let i = 0; i < d.length; i += 4) {
           for (let c = 0; c < 3; c++) {
-            const v = d[i + c] * 1.22;
-            d[i + c] = clamp255((v - 128) * 1.05 + 128);
+            const v = d[i + c] * 1.32;
+            d[i + c] = clamp255((v - 128) * 1.08 + 128);
           }
         }
         ctx.putImageData(imgData, 0, 0);
+
+        const hotGrad = ctx.createRadialGradient(
+          w / 2,
+          h / 2,
+          0,
+          w / 2,
+          h / 2,
+          Math.min(w, h) * 0.65,
+        );
+        hotGrad.addColorStop(0, "rgba(255,244,222,0.32)");
+        hotGrad.addColorStop(0.55, "rgba(255,244,222,0.12)");
+        hotGrad.addColorStop(1, "rgba(255,244,222,0)");
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = hotGrad;
+        ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = "source-over";
+
+        const falloff = ctx.createRadialGradient(
+          w / 2,
+          h / 2,
+          Math.min(w, h) * 0.45,
+          w / 2,
+          h / 2,
+          Math.min(w, h) * 0.85,
+        );
+        falloff.addColorStop(0, "rgba(0,0,0,0)");
+        falloff.addColorStop(1, "rgba(0,0,0,0.22)");
+        ctx.fillStyle = falloff;
+        ctx.fillRect(0, 0, w, h);
       }
 
       // Adds random noise to the captured photo (amount controls intensity,
