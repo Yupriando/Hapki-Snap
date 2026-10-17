@@ -775,12 +775,28 @@
         }
       }
 
+      // Open camera.html?debug=1 to show the torch diagnostics on screen
+      // (handy on phones, where there's no console). Hidden otherwise.
+      const TORCH_DEBUG = new URLSearchParams(location.search).has("debug");
+      // Per-lens probe results from findAndUseTorchCapableBackCamera().
+      let lensProbeLog = [];
+
       function showTorchDebug(lines) {
-        // Cause confirmed (device never exposes torch capability at all),
-        // so this no longer needs to be shown on-screen to end users —
-        // kept as a console log only, in case it's needed again later.
-        console.log("[torch debug]\n" + lines.join("\n"));
-        torchDebug.classList.remove("show");
+        const all = lines.concat([
+          "flashOn: " + flashOn + " | facing: " + currentFacingMode,
+          "ImageCapture API: " + ("ImageCapture" in window),
+          "photo flash (fillLightMode) supported: " + photoFlashSupported,
+          "lenses probed:",
+          ...(lensProbeLog.length ? lensProbeLog : ["  (none)"]),
+          "UA: " + navigator.userAgent,
+        ]);
+        console.log("[torch debug]\n" + all.join("\n"));
+        if (TORCH_DEBUG) {
+          torchDebug.textContent = all.join("\n");
+          torchDebug.classList.add("show");
+        } else {
+          torchDebug.classList.remove("show");
+        }
       }
 
       async function updateTorch() {
@@ -1019,6 +1035,10 @@
       async function findAndUseTorchCapableBackCamera(fallbackStream) {
         const fallbackTrack = fallbackStream.getVideoTracks()[0];
         const fallbackCaps = await getCapsWhenReady(fallbackTrack, 1500);
+        lensProbeLog = [
+          "  [default] " + (fallbackTrack.label || "(no label)") +
+            " → torch: " + !!fallbackCaps.torch,
+        ];
         if (fallbackCaps.torch) return fallbackStream;
 
         let devices;
@@ -1028,6 +1048,7 @@
           return fallbackStream;
         }
         const videoInputs = devices.filter((d) => d.kind === "videoinput");
+        lensProbeLog.push("  cameras listed: " + videoInputs.length);
         if (videoInputs.length <= 1) return fallbackStream;
 
         const fallbackSettings = fallbackTrack.getSettings
@@ -1061,10 +1082,12 @@
               audio: false,
             });
           } catch (err) {
+            lensProbeLog.push("  " + (dev.label || "(no label)") + " → open failed: " + err.name);
             continue;
           }
           const track = candidateStream.getVideoTracks()[0];
           const caps = await getCapsWhenReady(track, 800);
+          lensProbeLog.push("  " + (dev.label || "(no label)") + " → torch: " + !!caps.torch);
           if (
             caps.torch &&
             !(caps.facingMode && caps.facingMode.includes("user"))
