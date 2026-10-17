@@ -737,6 +737,43 @@
       // verify the real result via getSettings() rather than trusting
       // getCapabilities() alone.
       let torchEngaged = false;
+      // Fallback for Android devices where the torch can't be held on:
+      // Chrome's ImageCapture API can fire the real LED flash for a
+      // single still photo (takePhoto with fillLightMode "flash").
+      let photoFlashSupported = false;
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      // On many Android phones Chrome only reports `torch` in
+      // getCapabilities() a moment after the camera has actually
+      // opened — asking immediately after getUserMedia returns no torch
+      // even on phones that have one. Poll briefly before giving up.
+      async function getCapsWhenReady(track, timeout) {
+        if (!track || !track.getCapabilities) return {};
+        const start = performance.now();
+        let caps = track.getCapabilities();
+        while (
+          !caps.torch &&
+          track.readyState === "live" &&
+          performance.now() - start < timeout
+        ) {
+          await sleep(150);
+          caps = track.getCapabilities();
+        }
+        return caps;
+      }
+
+      async function checkPhotoFlash(track) {
+        photoFlashSupported = false;
+        if (!track || !("ImageCapture" in window)) return;
+        try {
+          const pc = await new ImageCapture(track).getPhotoCapabilities();
+          photoFlashSupported =
+            !!pc.fillLightMode && pc.fillLightMode.includes("flash");
+        } catch (err) {
+          console.warn("ImageCapture photo capabilities unavailable:", err);
+        }
+      }
 
       function showTorchDebug(lines) {
         // Cause confirmed (device never exposes torch capability at all),
@@ -757,10 +794,14 @@
           showTorchDebug(["getCapabilities() not supported on this browser at all."]);
           return;
         }
-        const caps = track.getCapabilities();
         const wantTorch = flashOn && currentFacingMode === "environment";
+        const caps = await getCapsWhenReady(track, wantTorch ? 1500 : 0);
         if (!caps.torch) {
           torchEngaged = false;
+          flashBtn.classList.toggle(
+            "torch-unsupported",
+            wantTorch && !photoFlashSupported,
+          );
           showTorchDebug([
             "caps.torch: not present",
             "active lens: " + (activeCameraLabel || "(label hidden)"),
@@ -773,7 +814,13 @@
         let lastError = null;
         const tryApply = async () => {
           try {
-            await track.applyConstraints({ advanced: [{ torch: wantTorch }] });
+            try {
+              await track.applyConstraints({ advanced: [{ torch: wantTorch }] });
+            } catch (err) {
+              // A few Android builds reject the `advanced` form but
+              // accept torch as a plain constraint.
+              await track.applyConstraints({ torch: wantTorch });
+            }
             // Give the camera hardware a beat, then check what actually
             // took effect instead of assuming applyConstraints worked.
             await new Promise((r) => setTimeout(r, 150));
@@ -798,7 +845,7 @@
         torchEngaged = result.ok;
         flashBtn.classList.toggle(
           "torch-unsupported",
-          wantTorch && !torchEngaged,
+          wantTorch && !torchEngaged && !photoFlashSupported,
         );
         showTorchDebug([
           "caps.torch: present",
@@ -971,9 +1018,7 @@
       // switch to the first one that actually reports `caps.torch`.
       async function findAndUseTorchCapableBackCamera(fallbackStream) {
         const fallbackTrack = fallbackStream.getVideoTracks()[0];
-        const fallbackCaps = fallbackTrack.getCapabilities
-          ? fallbackTrack.getCapabilities()
-          : {};
+        const fallbackCaps = await getCapsWhenReady(fallbackTrack, 1500);
         if (fallbackCaps.torch) return fallbackStream;
 
         let devices;
@@ -990,12 +1035,20 @@
           : {};
         const fallbackDeviceId = fallbackSettings.deviceId;
 
-        for (const dev of videoInputs) {
+        // Try the most likely main rear lens first: labels that say
+        // back/rear, and on Android "camera2 0" / "camera 0" is
+        // usually the main sensor — the one wired to the LED.
+        const score = (d) =>
+          (/back|rear|environment|belakang/i.test(d.label) ? 0 : 2) +
+          (/\b0\b|camera2 0/i.test(d.label) ? 0 : 1);
+        const ordered = videoInputs.slice().sort((a, b) => score(a) - score(b));
+
+        for (const dev of ordered) {
           if (dev.deviceId === fallbackDeviceId) continue;
           // Skip anything whose label plainly says it's a front lens —
           // saves a pointless open/close round trip on phones that list
           // the front camera in the same device list.
-          if (/front|user|face/i.test(dev.label)) continue;
+          if (/front|user|face|depan/i.test(dev.label)) continue;
 
           let candidateStream;
           try {
@@ -1011,7 +1064,7 @@
             continue;
           }
           const track = candidateStream.getVideoTracks()[0];
-          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          const caps = await getCapsWhenReady(track, 800);
           if (
             caps.torch &&
             !(caps.facingMode && caps.facingMode.includes("user"))
@@ -1053,6 +1106,11 @@
           updateVideoTransform();
           camStatus.style.display = "none";
           shutterBtn.disabled = false;
+          if (facingMode === "environment") {
+            await checkPhotoFlash(activeTrack);
+          } else {
+            photoFlashSupported = false;
+          }
           updateTorch();
         } catch (err) {
           console.error(err);
@@ -1091,8 +1149,33 @@
         // digitally brighten the captured photo below as the closest real
         // substitute. torchEngaged is verified in updateTorch(), not just
         // assumed from getCapabilities().
-        const needsExposureBoost =
+        const wantBackFlash =
           flashOn && currentFacingMode === "environment" && !torchEngaged;
+
+        // Android fallback: torch can't be held on, but the browser can
+        // fire the real LED for one still photo. Use that photo as the
+        // source instead of the live video frame.
+        let source = video;
+        let srcW = video.videoWidth;
+        let srcH = video.videoHeight;
+        let realFlashFired = false;
+        if (wantBackFlash && photoFlashSupported && currentStream) {
+          shutterBtn.disabled = true;
+          try {
+            const ic = new ImageCapture(currentStream.getVideoTracks()[0]);
+            const photoBlob = await ic.takePhoto({ fillLightMode: "flash" });
+            source = await createImageBitmap(photoBlob);
+            srcW = source.width;
+            srcH = source.height;
+            realFlashFired = true;
+          } catch (err) {
+            console.warn("ImageCapture flash photo failed:", err);
+          } finally {
+            shutterBtn.disabled = false;
+          }
+        }
+
+        const needsExposureBoost = wantBackFlash && !realFlashFired;
 
         flashOverlay.classList.remove("firing");
         void flashOverlay.offsetWidth;
@@ -1106,12 +1189,18 @@
         canvas.height = h;
         const ctx = canvas.getContext("2d");
 
-        // Zoom crops the source rectangle so the captured photo matches
+        // Crop the source to the preview's aspect ratio (a flash photo
+        // from ImageCapture can come back at a different shape than the
+        // video), then zoom crops further so the captured photo matches
         // what's actually visible in the (zoomed) preview.
-        const sw = vw / zoomLevel;
-        const sh = vh / zoomLevel;
-        const sx = (vw - sw) / 2;
-        const sy = (vh - sh) / 2;
+        let baseW = srcW,
+          baseH = srcH;
+        if (srcW / srcH > w / h) baseW = srcH * (w / h);
+        else baseH = srcW / (w / h);
+        const sw = baseW / zoomLevel;
+        const sh = baseH / zoomLevel;
+        const sx = (srcW - sw) / 2;
+        const sy = (srcH - sh) / 2;
 
         ctx.save();
         // Both Fuji-style filters are graded precisely per-pixel afterwards
@@ -1126,7 +1215,7 @@
           ctx.translate(w, 0);
           ctx.scale(-1, 1); // mirror to match preview, front camera only
         }
-        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+        ctx.drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
         ctx.filter = "none";
 
         if (currentFilter.wash) {
