@@ -185,6 +185,8 @@
         padding: 2px 6px;
         min-width: 34px;
         text-align: center;
+        cursor: pointer; /* tap to jump between 1× / 2× / 3× / 5× */
+        user-select: none;
       }
 
       .filter-panel {
@@ -641,8 +643,10 @@
       let flashOn = false;
 
       const ZOOM_MIN = 1,
-        ZOOM_MAX = 100,
-        ZOOM_STEP = 0.3;
+        ZOOM_MAX_HW = 8, // camera's own zoom: cap even if the phone allows more
+        ZOOM_MAX_DIGITAL = 4, // beyond this a cropped preview gets too blurry
+        ZOOM_STEP = 1.25, // each +/- tap multiplies/divides by this
+        ZOOM_PRESETS = [1, 2, 3, 5];
       let zoomLevel = 1;
 
       // build filter chips
@@ -673,27 +677,86 @@
         applyFilterToPreview(currentFilter);
       });
 
-      // ---------------- zoom (digital: crops the capture too, not just a visual scale) ----------------
+      // ---------------- zoom ----------------
+      // Uses the camera's own optical/sensor zoom when the browser exposes
+      // it (track capability `zoom`, e.g. Chrome on Android) — much sharper
+      // than scaling the preview, and the video frames themselves come out
+      // zoomed, so the capture matches automatically. Otherwise falls back
+      // to digital zoom: the preview is scaled with CSS and the capture is
+      // cropped by the same amount.
+      let hwZoom = null; // { min, max } when hardware zoom is available
+      let zoomMax = ZOOM_MAX_DIGITAL;
+      let zoomApplyPending = false;
+
+      function digitalZoom() {
+        return hwZoom ? 1 : zoomLevel;
+      }
+
       function updateVideoTransform() {
         const mirror = currentFacingMode === "user" ? -1 : 1;
-        video.style.transform = `scaleX(${mirror}) scale(${zoomLevel})`;
-        // The back camera's actual field of view looks like a ~0.5x wide
-        // lens at zoomLevel 1, so only its displayed label is offset —
-        // the front camera keeps showing the true 1.0x zoom level.
-        const displayZoom =
-          currentFacingMode === "environment" ? zoomLevel * 0.5 : zoomLevel;
-        zoomLabel.textContent = displayZoom.toFixed(1) + "×";
+        video.style.transform = `scaleX(${mirror}) scale(${digitalZoom()})`;
+        zoomLabel.textContent = zoomLevel.toFixed(1) + "×";
+      }
+
+      // Hardware zoom and torch live in the same constraint set, and
+      // applyConstraints replaces the whole set — so every call sends
+      // both, otherwise zooming would switch the torch off (or vice versa).
+      function trackConstraintSet(torch) {
+        const set = {};
+        if (hwZoom) set.zoom = zoomLevel;
+        if (torch !== undefined) set.torch = torch;
+        return set;
+      }
+
+      function applyHwZoom() {
+        // Coalesce rapid pinch updates into one call per frame.
+        if (zoomApplyPending || !hwZoom || !currentStream) return;
+        zoomApplyPending = true;
+        requestAnimationFrame(async () => {
+          zoomApplyPending = false;
+          const track = currentStream && currentStream.getVideoTracks()[0];
+          if (!track) return;
+          try {
+            await track.applyConstraints({
+              advanced: [trackConstraintSet(torchEngaged ? true : undefined)],
+            });
+          } catch (err) {
+            console.warn("Hardware zoom failed, switching to digital:", err);
+            hwZoom = null;
+            zoomMax = ZOOM_MAX_DIGITAL;
+            updateVideoTransform();
+          }
+        });
+      }
+
+      function configureZoom(track) {
+        const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+        if (caps.zoom && caps.zoom.max > caps.zoom.min) {
+          hwZoom = { min: caps.zoom.min, max: caps.zoom.max };
+          zoomMax = Math.min(caps.zoom.max, ZOOM_MAX_HW);
+        } else {
+          hwZoom = null;
+          zoomMax = ZOOM_MAX_DIGITAL;
+        }
+        setZoom(1);
       }
 
       function setZoom(level) {
-        zoomLevel = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, level));
+        const min = hwZoom ? Math.max(ZOOM_MIN, hwZoom.min) : ZOOM_MIN;
+        zoomLevel = Math.min(zoomMax, Math.max(min, level));
         updateVideoTransform();
+        applyHwZoom();
       }
 
-      zoomInBtn.addEventListener("click", () => setZoom(zoomLevel + ZOOM_STEP));
-      zoomOutBtn.addEventListener("click", () =>
-        setZoom(zoomLevel - ZOOM_STEP),
-      );
+      // Buttons step by a fixed ratio so each tap feels the same at 1×
+      // and at 6×. Tapping the label jumps through quick presets.
+      zoomInBtn.addEventListener("click", () => setZoom(zoomLevel * ZOOM_STEP));
+      zoomOutBtn.addEventListener("click", () => setZoom(zoomLevel / ZOOM_STEP));
+      zoomLabel.addEventListener("click", () => {
+        const presets = ZOOM_PRESETS.filter((p) => p <= zoomMax);
+        const next = presets.find((p) => p > zoomLevel + 0.05);
+        setZoom(next || presets[0]);
+      });
 
       // Pinch-to-zoom for touch devices.
       let pinchStartDist = null;
@@ -831,11 +894,13 @@
         const tryApply = async () => {
           try {
             try {
-              await track.applyConstraints({ advanced: [{ torch: wantTorch }] });
+              await track.applyConstraints({
+                advanced: [trackConstraintSet(wantTorch)],
+              });
             } catch (err) {
               // A few Android builds reject the `advanced` form but
               // accept torch as a plain constraint.
-              await track.applyConstraints({ torch: wantTorch });
+              await track.applyConstraints(trackConstraintSet(wantTorch));
             }
             // Give the camera hardware a beat, then check what actually
             // took effect instead of assuming applyConstraints worked.
@@ -1209,7 +1274,7 @@
           const activeTrack = stream.getVideoTracks()[0];
           activeCameraLabel = activeTrack ? activeTrack.label : "";
           video.srcObject = stream;
-          updateVideoTransform();
+          configureZoom(activeTrack);
           camStatus.style.display = "none";
           shutterBtn.disabled = false;
           if (facingMode === "environment") {
@@ -1287,24 +1352,32 @@
         void flashOverlay.offsetWidth;
         flashOverlay.classList.add("firing");
 
+        // What you see is what you get: the preview box shows the video
+        // with object-fit: cover, which trims the sides (or top/bottom)
+        // to fit the box. Crop the photo to that same visible shape so the
+        // saved photo matches the preview exactly.
         const vw = video.videoWidth;
         const vh = video.videoHeight;
-        const w = vw,
+        const box = camWrap.getBoundingClientRect();
+        const viewAspect = box.width && box.height ? box.width / box.height : vw / vh;
+        let w = vw,
           h = vh;
+        if (vw / vh > viewAspect) w = Math.round(vh * viewAspect);
+        else h = Math.round(vw / viewAspect);
         canvas.width = w;
         canvas.height = h;
         const ctx = canvas.getContext("2d");
 
-        // Crop the source to the preview's aspect ratio (a flash photo
-        // from ImageCapture can come back at a different shape than the
-        // video), then zoom crops further so the captured photo matches
-        // what's actually visible in the (zoomed) preview.
+        // Crop the source to that visible shape (a flash photo from
+        // ImageCapture can come back at a different shape/size than the
+        // video), then digital zoom crops further. Hardware zoom needs no
+        // crop — the camera already delivers zoomed frames.
         let baseW = srcW,
           baseH = srcH;
         if (srcW / srcH > w / h) baseW = srcH * (w / h);
         else baseH = srcW / (w / h);
-        const sw = baseW / zoomLevel;
-        const sh = baseH / zoomLevel;
+        const sw = baseW / digitalZoom();
+        const sh = baseH / digitalZoom();
         const sx = (srcW - sw) / 2;
         const sy = (srcH - sh) / 2;
 
