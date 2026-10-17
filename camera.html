@@ -716,9 +716,15 @@
           zoomApplyPending = false;
           const track = currentStream && currentStream.getVideoTracks()[0];
           if (!track) return;
+          // Always state the torch explicitly when the lens has one, so a
+          // zoom change can never switch it on (or off) by itself.
+          const caps = track.getCapabilities ? track.getCapabilities() : {};
+          const torch = caps.torch
+            ? flashOn && currentFacingMode === "environment" && torchEngaged
+            : undefined;
           try {
             await track.applyConstraints({
-              advanced: [trackConstraintSet(torchEngaged ? true : undefined)],
+              advanced: [trackConstraintSet(torch)],
             });
           } catch (err) {
             console.warn("Hardware zoom failed, switching to digital:", err);
@@ -923,7 +929,9 @@
           await new Promise((r) => setTimeout(r, 250));
           result = await tryApply();
         }
-        torchEngaged = result.ok;
+        // result.ok is also true after a successful switch-OFF, so only
+        // count the torch as engaged when it was actually asked to be on.
+        torchEngaged = wantTorch && result.ok;
         flashBtn.classList.toggle(
           "torch-unsupported",
           wantTorch && !torchEngaged && !photoFlashSupported,
