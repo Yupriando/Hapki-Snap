@@ -226,6 +226,8 @@
   const GAP_JITTER = [0.7, 1.5];      // gap multiplier range
   const ROTATION_RANGE = 3.2;         // degrees, +/-
   const MAX_ROW_FILL = 0.9;           // a tile's height never exceeds this fraction of the row's height
+  const DEFAULT_ASPECT = 3 / 4;       // width/height used if a photo's real size can't be read
+  const ASPECT_RANGE = [0.5, 2];      // clamp extreme panoramas/strips so tiles stay sensible
 
   const countText = document.getElementById('countText');
   const emptyState = document.getElementById('emptyState');
@@ -307,10 +309,12 @@
     // than the row itself — that's what was clipping the caption
     // strip off the bottom of some tiles before (overflow:hidden on
     // the row cut it away). Width is derived from height so the photo
-    // area inside the card stays portrait 3:4, matching the camera.
-    // Card height = photo height (0.9w * 4/3) + padding (0.05w top + 0.17w bottom) = 1.42w.
+    // area inside the card matches the photo's own aspect ratio —
+    // portrait photos get portrait tiles, landscape get landscape.
+    // Card height = photo height (0.9w / aspect) + padding (0.05w top + 0.17w bottom).
+    const aspect = photo.aspect || DEFAULT_ASPECT;
     const height = row.rowHeight * MAX_ROW_FILL * rand(WIDTH_JITTER[0], WIDTH_JITTER[1]);
-    const width = height / 1.42;
+    const width = height / (0.9 / aspect + 0.22);
     const gapBefore = row.queue.length === 0 ? 0 : row.baseGap * rand(GAP_JITTER[0], GAP_JITTER[1]);
     const prev = row.queue[row.queue.length - 1];
     // A row with nothing in it yet starts its first tile off past
@@ -366,14 +370,34 @@
     }
   }
 
+  // Loads the image once to read its real width/height, so the tile
+  // can be shaped to match. Also warms the browser cache, so the tile
+  // shows the photo immediately once it's on screen.
+  function loadAspect(photo){
+    if (photo.aspect) return Promise.resolve(photo.aspect);
+    return new Promise(resolve => {
+      const img = new Image();
+      const done = (aspect) => {
+        photo.aspect = Math.min(ASPECT_RANGE[1], Math.max(ASPECT_RANGE[0], aspect));
+        resolve(photo.aspect);
+      };
+      img.onload = () => done(img.naturalWidth && img.naturalHeight
+        ? img.naturalWidth / img.naturalHeight
+        : DEFAULT_ASPECT);
+      img.onerror = () => done(DEFAULT_ASPECT);
+      img.src = photo.photo_url;
+    });
+  }
+
   function addPhotoToRow(row, photo, isFresh){
     row.sourcePool.push(photo);
     appendTileToRow(row, photo, isFresh);
   }
 
-  function addNewPhoto(photo){
+  async function addNewPhoto(photo){
     if (knownIds.has(photo.id)) return;
     knownIds.add(photo.id);
+    await loadAspect(photo);
     totalPhotoCount++;
     updateVisibility();
     const rowIndex = (totalPhotoCount - 1) % NUM_ROWS;
@@ -384,7 +408,10 @@
     try{
       const initial = await fetchVisiblePhotos(); // newest first
       const oldestFirst = initial.slice().reverse();
+      await Promise.all(oldestFirst.map(loadAspect));
       oldestFirst.forEach(photo => {
+        // A realtime/poll update may have added it while images loaded.
+        if (knownIds.has(photo.id)) return;
         knownIds.add(photo.id);
         totalPhotoCount++;
         const rowIndex = (totalPhotoCount - 1) % NUM_ROWS;
