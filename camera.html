@@ -1029,9 +1029,40 @@
       // main lens is wired to the physical LED flash. `facingMode:
       // "environment"` alone lets the browser/OS pick any of them, so if
       // the one it picked has no torch, we probe the other rear lenses
-      // one at a time (stopping each before trying the next, since most
-      // Android camera stacks refuse to have two lenses open at once) and
-      // switch to the first one that actually reports `caps.torch`.
+      // one at a time and switch to the first one that actually reports
+      // `caps.torch`. Most Android camera stacks (Samsung included)
+      // refuse to open a second rear lens while one is still open
+      // (NotReadableError), so the default lens is closed before probing
+      // and reopened afterwards if no other lens has a torch.
+      //
+      // The lens that turned out to have the torch is remembered, so
+      // later opens (flipping back, reloading) go straight to it.
+      const TORCH_LENS_KEY = "hapkisnap_torch_lens";
+      function getTorchLensId() {
+        try {
+          return localStorage.getItem(TORCH_LENS_KEY);
+        } catch (err) {
+          return null;
+        }
+      }
+      function setTorchLensId(id) {
+        try {
+          if (id) localStorage.setItem(TORCH_LENS_KEY, id);
+          else localStorage.removeItem(TORCH_LENS_KEY);
+        } catch (err) {}
+      }
+
+      function openLens(deviceId) {
+        return navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: deviceId },
+            width: { ideal: 1280 },
+            height: { ideal: 960 },
+          },
+          audio: false,
+        });
+      }
+
       async function findAndUseTorchCapableBackCamera(fallbackStream) {
         const fallbackTrack = fallbackStream.getVideoTracks()[0];
         const fallbackCaps = await getCapsWhenReady(fallbackTrack, 1500);
@@ -1039,7 +1070,11 @@
           "  [default] " + (fallbackTrack.label || "(no label)") +
             " → torch: " + !!fallbackCaps.torch,
         ];
-        if (fallbackCaps.torch) return fallbackStream;
+        if (fallbackCaps.torch) {
+          const s = fallbackTrack.getSettings ? fallbackTrack.getSettings() : {};
+          setTorchLensId(s.deviceId);
+          return fallbackStream;
+        }
 
         let devices;
         try {
@@ -1062,42 +1097,90 @@
         const score = (d) =>
           (/back|rear|environment|belakang/i.test(d.label) ? 0 : 2) +
           (/\b0\b|camera2 0/i.test(d.label) ? 0 : 1);
-        const ordered = videoInputs.slice().sort((a, b) => score(a) - score(b));
-
-        for (const dev of ordered) {
-          if (dev.deviceId === fallbackDeviceId) continue;
+        const ordered = videoInputs
+          .slice()
+          .sort((a, b) => score(a) - score(b))
           // Skip anything whose label plainly says it's a front lens —
           // saves a pointless open/close round trip on phones that list
           // the front camera in the same device list.
-          if (/front|user|face|depan/i.test(dev.label)) continue;
+          .filter(
+            (d) =>
+              d.deviceId !== fallbackDeviceId &&
+              !/front|user|face|depan/i.test(d.label),
+          );
+        if (!ordered.length) return fallbackStream;
 
+        // Release the default lens so the others can actually be opened.
+        fallbackStream.getTracks().forEach((t) => t.stop());
+        await sleep(200);
+
+        for (const dev of ordered) {
           let candidateStream;
           try {
-            candidateStream = await navigator.mediaDevices.getUserMedia({
-              video: {
-                deviceId: { exact: dev.deviceId },
-                width: { ideal: 1280 },
-                height: { ideal: 960 },
-              },
-              audio: false,
-            });
+            candidateStream = await openLens(dev.deviceId);
           } catch (err) {
             lensProbeLog.push("  " + (dev.label || "(no label)") + " → open failed: " + err.name);
             continue;
           }
           const track = candidateStream.getVideoTracks()[0];
-          const caps = await getCapsWhenReady(track, 800);
+          const caps = await getCapsWhenReady(track, 1200);
           lensProbeLog.push("  " + (dev.label || "(no label)") + " → torch: " + !!caps.torch);
           if (
             caps.torch &&
             !(caps.facingMode && caps.facingMode.includes("user"))
           ) {
-            fallbackStream.getTracks().forEach((t) => t.stop());
+            setTorchLensId(dev.deviceId);
             return candidateStream;
           }
           candidateStream.getTracks().forEach((t) => t.stop());
+          await sleep(200);
         }
-        return fallbackStream;
+
+        // No lens has a torch — go back to the one the browser picked.
+        setTorchLensId(null);
+        lensProbeLog.push("  → no torch lens found, reopening default");
+        if (fallbackDeviceId) {
+          try {
+            return await openLens(fallbackDeviceId);
+          } catch (err) {}
+        }
+        return navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 960 },
+          },
+          audio: false,
+        });
+      }
+
+      // Opens the back camera, going straight to the remembered torch
+      // lens when there is one, otherwise letting the browser pick and
+      // then probing for a lens with a torch.
+      async function openBackCamera() {
+        const remembered = getTorchLensId();
+        if (remembered) {
+          try {
+            const stream = await openLens(remembered);
+            const caps = await getCapsWhenReady(stream.getVideoTracks()[0], 1500);
+            if (caps.torch) {
+              lensProbeLog = ["  [remembered] " + stream.getVideoTracks()[0].label + " → torch: true"];
+              return stream;
+            }
+            stream.getTracks().forEach((t) => t.stop());
+            await sleep(200);
+          } catch (err) {}
+          setTorchLensId(null);
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 960 },
+          },
+          audio: false,
+        });
+        return findAndUseTorchCapableBackCamera(stream);
       }
 
       // ---------------- camera ----------------
@@ -1110,17 +1193,17 @@
         camStatus.textContent = "Requesting camera access...";
         shutterBtn.disabled = true;
         try {
-          let stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: { ideal: facingMode },
-              width: { ideal: 1280 },
-              height: { ideal: 960 },
-            },
-            audio: false,
-          });
-          if (facingMode === "environment") {
-            stream = await findAndUseTorchCapableBackCamera(stream);
-          }
+          const stream =
+            facingMode === "environment"
+              ? await openBackCamera()
+              : await navigator.mediaDevices.getUserMedia({
+                  video: {
+                    facingMode: { ideal: facingMode },
+                    width: { ideal: 1280 },
+                    height: { ideal: 960 },
+                  },
+                  audio: false,
+                });
           currentStream = stream;
           currentFacingMode = facingMode;
           const activeTrack = stream.getVideoTracks()[0];
