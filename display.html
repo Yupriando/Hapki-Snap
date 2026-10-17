@@ -99,26 +99,42 @@
   /* Inner element: static per-tile rotation/scale set once at
      creation time via the --rot custom property, plus the
      one-time entrance animation. JS never touches this element. */
+  /* Polaroid layout: equal border on top and sides, a thicker strip
+     at the bottom that holds the name. All sizes come from JS (in px)
+     so the photo box exactly matches the photo's aspect ratio and the
+     caption always sits in its own strip, never over the photo. */
   .tile-card{
     position: relative;
     width: 100%;
     height: 100%;
+    display: flex;
+    flex-direction: column;
     background: var(--paper);
-    padding: 5% 5% 17%;
-    border-radius: var(--radius);
+    padding: var(--pad) var(--pad) 0;
+    border-radius: calc(var(--radius) * 0.5);
     box-shadow: 0 10px 24px rgba(0,0,0,0.35);
     transform: rotate(var(--rot, 0deg));
   }
-  .tile-card img{ width: 100%; height: 100%; object-fit: cover; display: block; border-radius: calc(var(--radius) * 0.4); }
+  .tile-card img{
+    width: 100%;
+    height: var(--photo-h);
+    flex: 0 0 auto;
+    object-fit: contain;   /* never crop the photo */
+    display: block;
+    background: #e9e6df;
+  }
   .tile-card .cap{
-    position: absolute;
-    bottom: 6%;
-    left: 8%;
-    right: 8%;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    padding: 0 4%;
     font-family: var(--font-display);
     letter-spacing: 0.02em;
-    font-size: clamp(12px, 1.8vh, 18px);
+    font-size: var(--cap-font);
     font-weight: 400;
+    line-height: 1;
     color: var(--ink);
     white-space: nowrap;
     overflow: hidden;
@@ -225,7 +241,9 @@
   const WIDTH_JITTER = [0.9, 1.08];   // tile height multiplier range (kept tighter, and capped so it can never exceed the row)
   const GAP_JITTER = [0.7, 1.5];      // gap multiplier range
   const ROTATION_RANGE = 3.2;         // degrees, +/-
-  const MAX_ROW_FILL = 0.9;           // a tile's height never exceeds this fraction of the row's height
+  const MAX_ROW_FILL = 0.9;           // a tile's (rotated) height never exceeds this fraction of the row's height
+  const POLAROID_PAD = 0.045;         // top/side border, fraction of card height
+  const POLAROID_CAP = 0.15;          // bottom name strip, fraction of card height
   const DEFAULT_ASPECT = 3 / 4;       // width/height used if a photo's real size can't be read
   const ASPECT_RANGE = [0.5, 2];      // clamp extreme panoramas/strips so tiles stay sensible
 
@@ -306,15 +324,28 @@
 
   function appendTileToRow(row, photo, isFresh){
     // Height is randomized but capped so a tile can never be taller
-    // than the row itself — that's what was clipping the caption
-    // strip off the bottom of some tiles before (overflow:hidden on
-    // the row cut it away). Width is derived from height so the photo
-    // area inside the card matches the photo's own aspect ratio —
-    // portrait photos get portrait tiles, landscape get landscape.
-    // Card height = photo height (0.9w / aspect) + padding (0.05w top + 0.17w bottom).
+    // than the row itself (overflow:hidden on the row would clip it).
+    // Width is derived from height so the photo box inside the card
+    // matches the photo's own aspect ratio — portrait photos get
+    // portrait tiles, landscape get landscape.
+    //
+    // Polaroid proportions, as fractions of the card height:
+    // PAD border on top/sides, CAP strip at the bottom for the name.
     const aspect = photo.aspect || DEFAULT_ASPECT;
-    const height = row.rowHeight * MAX_ROW_FILL * rand(WIDTH_JITTER[0], WIDTH_JITTER[1]);
-    const width = height / (0.9 / aspect + 0.22);
+    const rot = rand(-ROTATION_RANGE, ROTATION_RANGE);
+    const photoFrac = 1 - POLAROID_PAD - POLAROID_CAP;
+    const widthRatio = photoFrac * aspect + 2 * POLAROID_PAD; // card width / card height
+    // A rotated card's bounding box is taller than the card itself
+    // (more so for wide landscape cards), so shrink it until that
+    // box fits inside the row — nothing gets clipped top or bottom.
+    const rad = Math.abs(rot) * Math.PI / 180;
+    const rotGrow = widthRatio * Math.sin(rad) + Math.cos(rad);
+    const height = Math.min(
+      row.rowHeight * MAX_ROW_FILL * rand(WIDTH_JITTER[0], WIDTH_JITTER[1]),
+      row.rowHeight * MAX_ROW_FILL / rotGrow
+    );
+    const width = height * widthRatio;
+    const boxHeight = height * rotGrow;
     const gapBefore = row.queue.length === 0 ? 0 : row.baseGap * rand(GAP_JITTER[0], GAP_JITTER[1]);
     const prev = row.queue[row.queue.length - 1];
     // A row with nothing in it yet starts its first tile off past
@@ -323,18 +354,22 @@
     // Vertical wiggle is limited to whatever slack is left after the
     // tile's own height, so it can never push the tile (or its
     // caption) outside the row's visible bounds.
-    const slack = Math.max(0, (row.rowHeight - height) / 2) * 0.85;
+    const slack = Math.max(0, (row.rowHeight - boxHeight) / 2) * 0.85;
     const vOffset = rand(-slack, slack);
-    const rot = rand(-ROTATION_RANGE, ROTATION_RANGE);
 
     const outer = document.createElement('div');
     outer.className = 'tile';
     outer.style.width = width + 'px';
     outer.style.height = height + 'px';
 
+    const pad = height * POLAROID_PAD;
+    const capH = height * POLAROID_CAP;
     const card = document.createElement('div');
     card.className = 'tile-card' + (isFresh ? ' fresh' : '');
     card.style.setProperty('--rot', rot.toFixed(2) + 'deg');
+    card.style.setProperty('--pad', pad.toFixed(1) + 'px');
+    card.style.setProperty('--photo-h', (height * photoFrac).toFixed(1) + 'px');
+    card.style.setProperty('--cap-font', Math.max(11, capH * 0.45).toFixed(1) + 'px');
     card.innerHTML = `
       <img src="${photo.photo_url}" alt="photo from ${escapeHtml(photo.username)}" loading="lazy">
       <div class="cap">${escapeHtml(photo.username)}</div>
