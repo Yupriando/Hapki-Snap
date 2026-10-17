@@ -306,10 +306,11 @@
     // Height is randomized but capped so a tile can never be taller
     // than the row itself — that's what was clipping the caption
     // strip off the bottom of some tiles before (overflow:hidden on
-    // the row cut it away). Width is derived from height, keeping
-    // every tile the same 4:3-ish look regardless of size.
+    // the row cut it away). Width is derived from height so the photo
+    // area inside the card stays portrait 3:4, matching the camera.
+    // Card height = photo height (0.9w * 4/3) + padding (0.05w top + 0.17w bottom) = 1.42w.
     const height = row.rowHeight * MAX_ROW_FILL * rand(WIDTH_JITTER[0], WIDTH_JITTER[1]);
-    const width = height / 0.76;
+    const width = height / 1.42;
     const gapBefore = row.queue.length === 0 ? 0 : row.baseGap * rand(GAP_JITTER[0], GAP_JITTER[1]);
     const prev = row.queue[row.queue.length - 1];
     // A row with nothing in it yet starts its first tile off past
