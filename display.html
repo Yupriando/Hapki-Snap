@@ -8,23 +8,39 @@
 <style>
   html, body{ height: 100%; overflow: hidden; }
 
-  /* Mascot wallpaper support: drop your image in as
-     "mascot-background.png" next to this file (or edit the path
-     below) and it'll show as a dimmed backdrop behind the wall.
-     If the file isn't there yet, this simply falls back to the
-     plain background — nothing breaks. */
   body{
     background-image:
-      linear-gradient(rgba(19,18,20,0.55), rgba(19,18,20,0.55)),
       radial-gradient(ellipse at 15% -10%, rgba(217,30,54,0.10), transparent 55%),
-      radial-gradient(ellipse at 90% 110%, rgba(37,87,199,0.10), transparent 50%),
-      url('mascot-background.png');
-    background-size: cover, auto, auto, cover;
-    background-position: center, center, center, center;
-    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+      radial-gradient(ellipse at 90% 110%, rgba(37,87,199,0.10), transparent 50%);
+    background-repeat: no-repeat;
+  }
+
+  /* Mascot faces scattered across the backdrop (images in mascots/).
+     Kept faint so the photos stay the focus. Built by JS below. */
+  .mascot-layer{
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .mascot{
+    position: absolute;
+    opacity: var(--alpha, 0.14);
+    transform: translate(-50%, -50%) rotate(var(--rot, 0deg));
+    animation: mascotfloat var(--dur, 9s) ease-in-out var(--delay, 0s) infinite alternate;
+  }
+  @keyframes mascotfloat{
+    from{ transform: translate(-50%, -50%) rotate(var(--rot, 0deg)); }
+    to{ transform: translate(-50%, calc(-50% - 10px)) rotate(calc(var(--rot, 0deg) * -1)); }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .mascot{ animation: none; }
   }
 
   .wall-shell{
+    position: relative;
+    z-index: 1;
     height: 100vh;
     height: 100dvh;
     display: flex;
@@ -183,6 +199,8 @@
 </style>
 </head>
 <body>
+
+<div id="mascotLayer" class="mascot-layer" aria-hidden="true"></div>
 
 <div class="wall-shell">
   <div class="wall-header">
@@ -472,11 +490,52 @@
     }
   }, POLL_INTERVAL);
 
+  // ---------------- mascot backdrop ----------------
+  // Scatters the mascot faces over a jittered grid so they spread
+  // evenly across the screen without clumping, each with its own
+  // size, tilt and float timing. Neighbouring cells never repeat
+  // the same face.
+  const MASCOT_COUNT = 8;              // mascots/mascot-1.png ... mascot-8.png
+  const mascotLayer = document.getElementById('mascotLayer');
+
+  function buildMascots(){
+    mascotLayer.innerHTML = '';
+    const w = window.innerWidth, h = window.innerHeight;
+    const cell = Math.max(120, Math.min(w, h) / 3.2);
+    const cols = Math.ceil(w / cell) + 1;
+    const rowsN = Math.ceil(h / cell) + 1;
+    let prev = -1;
+    for (let r = 0; r < rowsN; r++){
+      for (let c = 0; c < cols; c++){
+        let face;
+        do { face = Math.floor(Math.random() * MASCOT_COUNT); } while (face === prev);
+        prev = face;
+        const img = document.createElement('img');
+        img.className = 'mascot';
+        img.src = `mascots/mascot-${face + 1}.png`;
+        img.alt = '';
+        const size = cell * rand(0.42, 0.62);
+        img.style.width = size + 'px';
+        // offset every other row by half a cell, then jitter
+        const x = (c + (r % 2 ? 0.5 : 0)) * cell + rand(-0.18, 0.18) * cell;
+        const y = (r + 0.5) * cell + rand(-0.18, 0.18) * cell - cell * 0.25;
+        img.style.left = x + 'px';
+        img.style.top = y + 'px';
+        img.style.setProperty('--rot', rand(-16, 16).toFixed(1) + 'deg');
+        img.style.setProperty('--alpha', rand(0.1, 0.18).toFixed(2));
+        img.style.setProperty('--dur', rand(6, 11).toFixed(1) + 's');
+        img.style.setProperty('--delay', (-rand(0, 10)).toFixed(1) + 's');
+        mascotLayer.appendChild(img);
+      }
+    }
+  }
+  buildMascots();
+
   measureAllRows();
   let resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(measureAllRows, 250);
+    resizeTimer = setTimeout(() => { measureAllRows(); buildMascots(); }, 250);
   });
 
   // ---------------- main animation loop ----------------
