@@ -57,6 +57,9 @@
   }
   #nameField{ margin-bottom: 8px; }
   .hint{ font-size: 12px; color: var(--graphite-dim); margin: 0 0 24px; min-height: 16px; }
+  .field-label{ display: block; font-size: 13px; color: var(--graphite); margin: 0 0 6px; }
+  .field-label .opt{ color: var(--graphite-dim); }
+  #emailField{ margin-bottom: 8px; }
   .next-btn{ width: 100%; padding: 16px; font-size: 16px; }
 </style>
 </head>
@@ -79,11 +82,20 @@
     <input class="field" id="nameField" type="text" placeholder="Your name" maxlength="24" autocomplete="off">
     <p class="hint" id="hintText">This name will appear under your photo on the big screen.</p>
 
+    <label class="field-label" for="emailField">Get your photos by email <span class="opt">(optional)</span></label>
+    <input class="field" id="emailField" type="email" inputmode="email" placeholder="you@gmail.com" maxlength="120" autocomplete="email">
+    <p class="hint" id="emailHint">We'll send all your photos to this address after the event. It's only used for that and never shown on screen.</p>
+
     <button class="btn btn-primary next-btn" id="nextBtn" type="button">Continue to camera</button>
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-client.js"></script>
 <script>
+  const emailField = document.getElementById('emailField');
+  const emailHint = document.getElementById('emailHint');
+  const EMAIL_HINT = emailHint.textContent;
   const modeNamed = document.getElementById('modeNamed');
   const modeAnon = document.getElementById('modeAnon');
   const nameField = document.getElementById('nameField');
@@ -112,7 +124,7 @@
     hintText.textContent = 'You\'ll appear as "Anonymous" on the big screen.';
   });
 
-  nextBtn.addEventListener('click', () => {
+  nextBtn.addEventListener('click', async () => {
     let username = 'Anonymous';
     if (!isAnon) {
       const typed = nameField.value.trim();
@@ -124,8 +136,37 @@
       }
       username = typed;
     }
+
+    const email = emailField.value.trim();
+    emailHint.style.color = 'var(--graphite-dim)';
+    emailHint.textContent = EMAIL_HINT;
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      emailField.focus();
+      emailHint.textContent = 'That email doesn\'t look right — fix it, or leave it empty.';
+      emailHint.style.color = 'var(--flash)';
+      return;
+    }
+
+    nextBtn.disabled = true;
     sessionStorage.setItem('hapkisnap_username', username);
+    // Each check-in is a new guest; their photos are linked to this id
+    // so the admin can email each guest all of their own photos later.
+    sessionStorage.removeItem('hapkisnap_guest_id');
+    if (email) {
+      try {
+        const guestId = await registerGuest(username, email);
+        sessionStorage.setItem('hapkisnap_guest_id', guestId);
+      } catch (err) {
+        // Don't block the photo booth if this fails — the guest can
+        // still take photos, they just won't be emailed.
+        console.error('Guest registration failed:', err);
+      }
+    }
     window.location.href = 'camera.html';
+  });
+
+  emailField.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') nextBtn.click();
   });
 
   nameField.addEventListener('keydown', (e) => {

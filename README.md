@@ -85,6 +85,23 @@ const TILT_ANGLE = 0.5;     // how tilted/elliptical the ring looks (0 = flat li
 4. **display.html** — fetches all `visible = true` photos, distributes them round-robin across the ticker rows, and subscribes to Realtime + polling so new photos join the ticker automatically
 5. **admin.html** — sign in with Supabase Auth, toggle photos hidden/shown on the wall, or delete them permanently (storage + database)
 
+## Emailing guests their photos (one email per guest)
+
+Guests can enter an email on the check-in page (optional). After the event, press **Email photos to guests** in `admin.html`: each guest gets **one email** with all of their photos attached (plus tap-to-open thumbnails). Photos already emailed are marked, so pressing the button again only sends new photos — never duplicates.
+
+Emails are stored in a separate `guests` table that the public can insert into but never read; `photos` only stores a `guest_id`.
+
+One-time setup:
+1. **SQL** — run `schema-email.sql` in the Supabase SQL Editor.
+2. **Gmail App Password** — on the Gmail account you'll send from, turn on 2-Step Verification, then create an App Password at https://myaccount.google.com/apppasswords (16 characters).
+3. **Secrets** — Supabase Dashboard → Edge Functions → Secrets, add:
+   - `GMAIL_USER` = the Gmail address
+   - `GMAIL_APP_PASSWORD` = the App Password (no spaces)
+   - `EVENT_NAME` = (optional) e.g. `Hapkido Open 2026`
+4. **Deploy the function** — Dashboard → Edge Functions → Deploy a new function → *Via Editor*, name it exactly `send-guest-photos`, paste `supabase/functions/send-guest-photos/index.ts`, deploy. (Or with the CLI: `supabase functions deploy send-guest-photos`.)
+
+Limits: a personal Gmail account can send roughly 500 emails/day. The function sends 15 guests per call and the admin page keeps calling until everyone is done.
+
 ## Further customization
 - Change the "just landed" pop-in animation: edit `@keyframes freshpop` in `display.html`
 - Limit the name length: change `maxlength` on the input in `index.html`

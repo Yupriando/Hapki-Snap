@@ -109,6 +109,7 @@
       <span class="frame-counter" id="adminCount">0 photos</span>
       <span class="download-status" id="downloadStatus"></span>
       <button class="btn btn-ghost" id="downloadAllBtn">Download all</button>
+      <button class="btn btn-ghost" id="emailGuestsBtn">Email photos to guests</button>
       <button class="btn btn-ghost" id="logoutBtn">Sign out</button>
     </div>
   </div>
@@ -188,6 +189,7 @@
           <div class="meta">
             <div class="name">${escapeHtml(photo.username)}</div>
             <div class="filter-tag">filter: ${escapeHtml(photo.filter_name)}</div>
+            ${photo.emailed_at ? '<div class="filter-tag">✉ emailed to guest</div>' : ''}
           </div>
           <div class="actions">
             <button class="toggle-btn" data-id="${photo.id}" data-visible="${photo.visible}">
@@ -320,6 +322,61 @@
       downloadStatus.textContent = 'Failed to prepare download.';
     }finally{
       downloadAllBtn.disabled = false;
+    }
+  });
+
+  // ---------------- email photos to guests ----------------
+  // One email per guest with all of their not-yet-emailed photos,
+  // sent by the send-guest-photos Edge Function. The function handles
+  // a batch of guests per call, so keep calling until none remain.
+  // Guests whose email failed are skipped for the rest of this run.
+  const emailGuestsBtn = document.getElementById('emailGuestsBtn');
+
+  emailGuestsBtn.addEventListener('click', async () => {
+    emailGuestsBtn.disabled = true;
+    downloadStatus.textContent = 'Checking who needs an email...';
+    try{
+      const preview = await sendGuestPhotoEmails({ dryRun: true });
+      if (!preview.guests){
+        downloadStatus.textContent = 'No new photos to email.';
+        setTimeout(() => { downloadStatus.textContent = ''; }, 3000);
+        return;
+      }
+      const ok = confirm(
+        `Send ${preview.photos} photo${preview.photos === 1 ? '' : 's'} to ` +
+        `${preview.guests} guest${preview.guests === 1 ? '' : 's'} (one email each)?`
+      );
+      if (!ok){
+        downloadStatus.textContent = '';
+        return;
+      }
+
+      let sent = 0;
+      const failed = [];
+      let remaining = preview.guests;
+      while (remaining > 0){
+        downloadStatus.textContent = `Sending emails... ${sent}/${preview.guests}`;
+        const res = await sendGuestPhotoEmails({ exclude: failed.map(f => f.email) });
+        sent += res.sent;
+        failed.push(...res.failed);
+        remaining = res.remaining;
+      }
+
+      if (failed.length){
+        console.warn('Emails that failed:', failed);
+        downloadStatus.textContent =
+          `Sent ${sent} email${sent === 1 ? '' : 's'}, ${failed.length} failed ` +
+          `(${failed.map(f => f.email).join(', ')}). Press the button again to retry.`;
+      } else {
+        downloadStatus.textContent = `Done — sent ${sent} email${sent === 1 ? '' : 's'}.`;
+        setTimeout(() => { downloadStatus.textContent = ''; }, 5000);
+      }
+      loadPhotos();
+    }catch(err){
+      console.error(err);
+      downloadStatus.textContent = 'Email sending failed: ' + err.message;
+    }finally{
+      emailGuestsBtn.disabled = false;
     }
   });
 

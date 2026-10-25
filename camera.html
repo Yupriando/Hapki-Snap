@@ -1702,7 +1702,12 @@
         retakeBtn.disabled = true;
         uploadStatus.textContent = "Sending to the wall...";
         try {
-          await uploadPhoto(capturedBlob, username, currentFilter.label);
+          await uploadPhoto(
+            capturedBlob,
+            username,
+            currentFilter.label,
+            sessionStorage.getItem("hapkisnap_guest_id"),
+          );
           uploadStatus.textContent =
             "Sent! Your photo is now on the big screen.";
           setTimeout(() => {
