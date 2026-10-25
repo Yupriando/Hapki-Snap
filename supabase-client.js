@@ -47,14 +47,15 @@ async function uploadPhoto(blob, username, filterName, guestId) {
   };
   if (guestId) row.guest_id = guestId;
 
-  const { data, error: insertError } = await supabaseClient
+  // No .select() after insert: reading rows back needs read access,
+  // and the public (camera page) is not allowed to read photos — only
+  // the signed-in display and admin pages are (see schema-display-lock.sql).
+  const { error: insertError } = await supabaseClient
     .from(TABLE_NAME)
-    .insert(row)
-    .select()
-    .single();
+    .insert(row);
 
   if (insertError) throw insertError;
-  return data;
+  return row;
 }
 
 /**

@@ -352,6 +352,17 @@
       .review-actions .btn {
         flex: 1;
       }
+      .save-btn {
+        margin-top: 12px;
+        width: 100%;
+        max-width: 460px;
+        background: transparent;
+        border: 1px solid var(--line);
+        color: var(--paper);
+      }
+      .save-btn:disabled {
+        opacity: 0.5;
+      }
       .upload-status {
         margin-top: 14px;
         font-size: 13px;
@@ -466,6 +477,7 @@
         <button class="btn" id="retakeBtn">Retake</button>
         <button class="btn btn-primary" id="sendBtn">Post to wall</button>
       </div>
+      <button class="btn save-btn" id="saveBtn" type="button">⬇ Save to my phone</button>
       <p class="upload-status" id="uploadStatus"></p>
     </div>
 
@@ -1682,9 +1694,19 @@
         canvas.toBlob(
           (blob) => {
             capturedBlob = blob;
+            // Prepared now, not on tap: iOS only opens the share sheet
+            // if share() is called straight from the tap, with no await
+            // in between.
+            capturedFile = new File(
+              [blob],
+              `hapkisnap-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.jpg`,
+              { type: "image/jpeg" },
+            );
             reviewImg.src = URL.createObjectURL(blob);
             reviewOverlay.classList.add("show");
             uploadStatus.textContent = "";
+            saveBtn.disabled = false;
+            saveBtn.textContent = "⬇ Save to my phone";
           },
           "image/jpeg",
           0.92,
@@ -1694,6 +1716,51 @@
       retakeBtn.addEventListener("click", () => {
         reviewOverlay.classList.remove("show");
         capturedBlob = null;
+        capturedFile = null;
+      });
+
+      // ---------------- save to phone ----------------
+      // iPhone/iPad: a plain download lands in the Files app, not
+      // Photos, so open the share sheet instead — it has "Save Image",
+      // which puts the photo straight into the Photos gallery.
+      // Android & others: a normal download, which the Gallery /
+      // Google Photos app picks up from the Downloads folder.
+      const saveBtn = document.getElementById("saveBtn");
+      let capturedFile = null;
+      const IS_IOS =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+      function markSaved() {
+        saveBtn.textContent = "✓ Saved";
+        saveBtn.disabled = true;
+      }
+
+      saveBtn.addEventListener("click", () => {
+        if (!capturedFile) return;
+        if (
+          IS_IOS &&
+          navigator.canShare &&
+          navigator.canShare({ files: [capturedFile] })
+        ) {
+          navigator
+            .share({ files: [capturedFile] })
+            .then(markSaved)
+            .catch((err) => {
+              // AbortError = the guest closed the share sheet; not an error.
+              if (err.name !== "AbortError") console.error(err);
+            });
+          return;
+        }
+        const url = URL.createObjectURL(capturedFile);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = capturedFile.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        markSaved();
       });
 
       sendBtn.addEventListener("click", async () => {
@@ -1708,14 +1775,19 @@
             currentFilter.label,
             sessionStorage.getItem("hapkisnap_guest_id"),
           );
-          uploadStatus.textContent =
-            "Sent! Your photo is now on the big screen.";
+          const alreadySaved = saveBtn.disabled;
+          uploadStatus.textContent = alreadySaved
+            ? "Sent! Your photo is now on the big screen."
+            : "Sent! Your photo is now on the big screen. Tap Save to keep a copy.";
+          // Leave it up longer when the photo hasn't been saved yet, so
+          // there's still time to tap "Save to my phone".
           setTimeout(() => {
             reviewOverlay.classList.remove("show");
             capturedBlob = null;
+            capturedFile = null;
             sendBtn.disabled = false;
             retakeBtn.disabled = false;
-          }, 1400);
+          }, alreadySaved ? 1400 : 4000);
         } catch (err) {
           console.error(err);
           uploadStatus.textContent =

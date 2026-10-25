@@ -38,6 +38,36 @@
     .mascot{ animation: none; }
   }
 
+  .login-wrap{
+    position: relative;
+    z-index: 1;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .login-card{
+    width: 100%;
+    max-width: 380px;
+    padding: 40px 32px;
+    background: var(--ink-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .login-card h1{
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 0.01em;
+    font-size: 32px;
+    margin: 0 0 8px;
+  }
+  .login-card h1 span{ color: var(--flash); }
+  .login-card p{ color: var(--graphite); font-size: 14px; margin: 0 0 24px; }
+  .login-card .field{ margin-bottom: 12px; }
+  .login-error{ font-size: 13px; color: var(--flash); min-height: 16px; margin: 8px 0 0; }
+
   .wall-shell{
     position: relative;
     z-index: 1;
@@ -202,7 +232,20 @@
 
 <div id="mascotLayer" class="mascot-layer" aria-hidden="true"></div>
 
-<div class="wall-shell">
+<div class="login-wrap" id="loginWrap" style="display:none;">
+  <div class="login-card viewfinder">
+    <span class="vf-tl"></span><span class="vf-tr"></span>
+    <span class="vf-bl"></span><span class="vf-br"></span>
+    <h1>HAPKI<span>SNAP</span> — LIVE</h1>
+    <p>Sign in to open the live wall.</p>
+    <input class="field" id="loginEmail" type="email" placeholder="Email" autocomplete="username">
+    <input class="field" id="loginPass" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="btn btn-primary" id="loginBtn" style="width:100%; margin-top:8px;">Open wall</button>
+    <p class="login-error" id="loginError"></p>
+  </div>
+</div>
+
+<div class="wall-shell" id="wallShell" style="display:none;">
   <div class="wall-header">
     <div class="wall-title-block">
       <h1 class="wall-title">HAPKI<span>SNAP</span> — LIVE</h1>
@@ -477,18 +520,57 @@
     }
   }
 
-  subscribeToNewPhotos((photo) => addNewPhoto(photo));
-
+  // ---------------- login gate ----------------
+  // The wall only loads after signing in (same Supabase Auth account
+  // as admin.html, or a separate one made for the display). The
+  // database also refuses to hand out the photo list without a login
+  // (schema-display-lock.sql), so this isn't just a cosmetic lock.
+  // Supabase keeps the session in this browser, so the display
+  // laptop only needs to sign in once.
   const POLL_INTERVAL = 8000;
-  setInterval(async () => {
-    try{
-      const latest = await fetchVisiblePhotos();
-      const fresh = latest.filter(p => !knownIds.has(p.id));
-      fresh.reverse().forEach(p => addNewPhoto(p));
-    }catch(err){
-      console.error('poll refresh failed', err);
+  const loginWrap = document.getElementById('loginWrap');
+  const wallShell = document.getElementById('wallShell');
+  const loginEmail = document.getElementById('loginEmail');
+  const loginPass = document.getElementById('loginPass');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginError = document.getElementById('loginError');
+  let wallStarted = false;
+
+  function startWall(){
+    if (wallStarted) return;
+    wallStarted = true;
+    loginWrap.style.display = 'none';
+    wallShell.style.display = 'flex';
+    measureAllRows();
+
+    subscribeToNewPhotos((photo) => addNewPhoto(photo));
+    setInterval(async () => {
+      try{
+        const latest = await fetchVisiblePhotos();
+        const fresh = latest.filter(p => !knownIds.has(p.id));
+        fresh.reverse().forEach(p => addNewPhoto(p));
+      }catch(err){
+        console.error('poll refresh failed', err);
+      }
+    }, POLL_INTERVAL);
+    loadInitial();
+  }
+
+  loginBtn.addEventListener('click', async () => {
+    loginError.textContent = '';
+    loginBtn.disabled = true;
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email: loginEmail.value.trim(),
+      password: loginPass.value
+    });
+    loginBtn.disabled = false;
+    if (error){
+      loginError.textContent = 'Incorrect email or password.';
+      return;
     }
-  }, POLL_INTERVAL);
+    startWall();
+  });
+  loginPass.addEventListener('keydown', (e) => { if (e.key === 'Enter') loginBtn.click(); });
 
   // ---------------- mascot backdrop ----------------
   // Scatters the mascot faces over a jittered grid so they spread
@@ -563,7 +645,10 @@
   }
   requestAnimationFrame(tick);
 
-  loadInitial();
+  supabaseClient.auth.getSession().then(({ data }) => {
+    if (data.session) startWall();
+    else loginWrap.style.display = 'flex';
+  });
 </script>
 
 </body>
