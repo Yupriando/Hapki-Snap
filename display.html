@@ -71,10 +71,6 @@
   /* "Scan to join" card, pinned bottom-right over the wall so guests
      can open the photo booth from the big screen. */
   .join-qr{
-    position: fixed;
-    right: clamp(12px, 2vw, 32px);
-    bottom: clamp(12px, 2vh, 28px);
-    z-index: 3;
     background: var(--paper);
     color: var(--ink);
     padding: clamp(8px, 1.2vh, 14px);
@@ -99,6 +95,36 @@
     font-size: clamp(9px, 1.15vh, 13px);
     color: var(--graphite-dim);
     margin-top: 3px;
+  }
+  .join-qr.is-hidden{ display: none; }
+
+  /* QR show/hide control. Only appears while the mouse is moving (or
+     always on touch screens), so the big screen stays clean. Press Q
+     on the keyboard to toggle as well. */
+  .qr-dock{
+    position: fixed;
+    right: clamp(12px, 2vw, 32px);
+    bottom: clamp(12px, 2vh, 28px);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .qr-toggle{
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(19,18,20,0.85);
+    color: var(--paper);
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+  }
+  body.show-controls .qr-toggle{ opacity: 1; pointer-events: auto; }
+  @media (hover: none){
+    .qr-toggle{ opacity: 0.85; pointer-events: auto; }
   }
 
   .wall-shell{
@@ -296,10 +322,13 @@
     <div class="row-viewport"><div class="row-track" id="track2"></div></div>
   </div>
 
-  <div class="join-qr">
-    <img src="qr-code.svg" alt="QR code to hapki-snap.vercel.app">
-    <div class="join-title">SCAN TO <span>SNAP</span></div>
-    <div class="join-url">hapki-snap.vercel.app</div>
+  <div class="qr-dock">
+    <button class="qr-toggle" id="qrToggle" type="button">Hide QR</button>
+    <div class="join-qr" id="joinQr">
+      <img src="qr-code.svg" alt="QR code to hapki-snap.vercel.app">
+      <div class="join-title">SCAN TO <span>SNAP</span></div>
+      <div class="join-url">hapki-snap.vercel.app</div>
+    </div>
   </div>
 
   <div id="emptyState" class="empty-state" style="display:none;">
@@ -683,6 +712,39 @@
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
+
+  // ---------------- QR show / hide ----------------
+  // Toggle with the button (appears when the mouse moves) or the Q key.
+  // The choice is remembered on this display device.
+  const joinQr = document.getElementById('joinQr');
+  const qrToggle = document.getElementById('qrToggle');
+  const QR_KEY = 'hapkisnap_qr_hidden';
+
+  function setQrHidden(hidden){
+    joinQr.classList.toggle('is-hidden', hidden);
+    qrToggle.textContent = hidden ? 'Show QR' : 'Hide QR';
+    try { localStorage.setItem(QR_KEY, hidden ? '1' : '0'); } catch (err) {}
+  }
+  let qrStartHidden = false;
+  try { qrStartHidden = localStorage.getItem(QR_KEY) === '1'; } catch (err) {}
+  setQrHidden(qrStartHidden);
+
+  qrToggle.addEventListener('click', () => {
+    setQrHidden(!joinQr.classList.contains('is-hidden'));
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT') return; // typing on the login form
+    if (e.key === 'q' || e.key === 'Q'){
+      setQrHidden(!joinQr.classList.contains('is-hidden'));
+    }
+  });
+
+  let controlsTimer = null;
+  document.addEventListener('mousemove', () => {
+    document.body.classList.add('show-controls');
+    clearTimeout(controlsTimer);
+    controlsTimer = setTimeout(() => document.body.classList.remove('show-controls'), 2500);
+  });
 
   supabaseClient.auth.getSession().then(({ data }) => {
     if (data.session) startWall();
