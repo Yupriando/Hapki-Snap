@@ -592,7 +592,7 @@
   // The wall only loads after signing in (same Supabase Auth account
   // as admin.html, or a separate one made for the display). The
   // database also refuses to hand out the photo list without a login
-  // (schema-display-lock.sql), so this isn't just a cosmetic lock.
+  // (schema.sql), so this isn't just a cosmetic lock.
   // Supabase keeps the session in this browser, so the display
   // laptop only needs to sign in once.
   const POLL_INTERVAL = 8000;
@@ -746,7 +746,13 @@
     controlsTimer = setTimeout(() => document.body.classList.remove('show-controls'), 2500);
   });
 
-  supabaseClient.auth.getSession().then(({ data }) => {
+  // mode demo (?demo=1, lihat supabase-client.js): tanpa login, hanya foto demo.
+  // QR disembunyikan: memindainya membuka kamera acara sungguhan (foto masuk ke database asli).
+  if (HAPKI_DEMO) {
+    document.querySelectorAll('.qr-dock, .join-qr').forEach((el) => (el.style.display = 'none'));
+    startWall();
+  }
+  else supabaseClient.auth.getSession().then(({ data }) => {
     if (data.session) startWall();
     else loginWrap.style.display = 'flex';
   });

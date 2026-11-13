@@ -1,0 +1,20 @@
+# Local secrets — never commit (Gmail App Password etc. belong in
+# Supabase / Vercel secrets, not in files)
+.env
+.env.*
+
+# Vercel & Supabase CLI local state
+.vercel/
+supabase/.temp/
+supabase/.branches/
+
+# Dependencies (if tooling is ever added)
+node_modules/
+
+# Editor / OS clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log

@@ -49,7 +49,7 @@ async function uploadPhoto(blob, username, filterName, guestId) {
 
   // No .select() after insert: reading rows back needs read access,
   // and the public (camera page) is not allowed to read photos — only
-  // the signed-in display and admin pages are (see schema-display-lock.sql).
+  // the signed-in display and admin pages are (see schema.sql).
   const { error: insertError } = await supabaseClient
     .from(TABLE_NAME)
     .insert(row);
@@ -172,4 +172,98 @@ function subscribeToNewPhotos(onInsert) {
     )
     .subscribe();
   return channel;
+}
+
+// =========================================================
+// MODE DEMO (untuk "Try It Live" di portofolio)
+// Buka halaman mana pun dengan ?demo=1 (mis. index.html?demo=1, display.html?demo=1).
+// - Foto TIDAK diunggah ke Supabase & tidak tercatat sebagai tamu.
+// - Foto dikirim langsung ke display.html di browser yang sama (BroadcastChannel)
+//   dan disimpan sementara di browser (localStorage, maksimal DEMO_MAX foto).
+// - display.html tidak perlu login dan hanya menampilkan foto demo, bukan foto tamu acara.
+// =========================================================
+const HAPKI_DEMO = (() => {
+  try {
+    if (new URLSearchParams(location.search).has("demo")) sessionStorage.setItem("hapkisnap_demo", "1");
+    return sessionStorage.getItem("hapkisnap_demo") === "1";
+  } catch (e) {
+    return new URLSearchParams(location.search).has("demo");
+  }
+})();
+
+if (HAPKI_DEMO) {
+  const DEMO_KEY = "hapkisnap_demo_photos";
+  const DEMO_MAX = 12;
+  const demoChannel = "BroadcastChannel" in window ? new BroadcastChannel("hapkisnap-demo") : null;
+
+  // foto contoh supaya layar display tidak kosong saat pertama dibuka
+  const DEMO_SEED = ["Raka", "Nadia", "Bima", "Sari", "Dimas", "Ayu", "Fajar", "Lala"].map((name, i) => ({
+    id: `seed-${i + 1}`,
+    username: name,
+    filter_name: "demo",
+    photo_url: `mascots/mascot-${i + 1}.png`,
+    visible: true,
+    created_at: new Date(Date.now() - (i + 1) * 60000).toISOString(),
+  }));
+
+  const readDemo = () => {
+    try {
+      return JSON.parse(localStorage.getItem(DEMO_KEY) || "[]");
+    } catch (e) {
+      return [];
+    }
+  };
+  const saveDemo = (list) => {
+    // kalau penyimpanan penuh, buang foto paling lama sampai muat
+    for (let n = Math.min(list.length, DEMO_MAX); n > 0; n--) {
+      try {
+        localStorage.setItem(DEMO_KEY, JSON.stringify(list.slice(0, n)));
+        return;
+      } catch (e) {}
+    }
+  };
+
+  // perkecil foto (lebar maks. 720px) supaya ringan dikirim & disimpan
+  const shrink = (blob) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      img.onload = () => {
+        const s = Math.min(1, 720 / img.naturalWidth);
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.naturalWidth * s);
+        c.height = Math.round(img.naturalHeight * s);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        reject(e);
+      };
+      img.src = url;
+    });
+
+  uploadPhoto = async (blob, username, filterName) => {
+    const row = {
+      id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      username: username || "Anonymous",
+      filter_name: filterName || "none",
+      photo_url: await shrink(blob),
+      visible: true,
+      created_at: new Date().toISOString(),
+    };
+    saveDemo([row, ...readDemo()]);
+    if (demoChannel) demoChannel.postMessage(row);
+    return row;
+  };
+
+  registerGuest = async () => "demo-guest"; // email tamu tidak disimpan di mode demo
+
+  fetchVisiblePhotos = async () => [...readDemo(), ...DEMO_SEED];
+
+  subscribeToNewPhotos = (onInsert) => {
+    if (demoChannel) demoChannel.onmessage = (e) => e.data && e.data.visible && onInsert(e.data);
+    return demoChannel;
+  };
 }

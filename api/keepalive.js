@@ -2,7 +2,7 @@
 // Hapki Snap — daily Supabase keep-alive (Vercel Serverless Function)
 //
 // Vercel Cron calls this once a day (see vercel.json). It runs the
-// keepalive() database function from schema-keepalive.sql, so the
+// keepalive() database function from schema.sql, so the
 // free Supabase project never hits 7 days of inactivity and pauses.
 //
 // Open https://hapki-snap.vercel.app/api/keepalive in a browser to

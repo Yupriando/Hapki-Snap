@@ -1,108 +1,72 @@
 # Hapki Snap
 
-A live event photo wall with a martial-arts-inspired look. Guests enter a name (or stay anonymous) → take a photo with color filters → it instantly appears on the big screen as a scrolling ticker of photos → an admin can moderate everything from a dashboard.
+A live event photo booth with a martial-arts look. Guests scan a QR code, take a photo on their own phone with filters, and it appears on the big screen within seconds. After the event, every guest gets **one email with all of their photos**.
 
-## File structure
+**Live:** https://hapki-snap.vercel.app
+
+## Features
+
+**Guests (`index.html` → `camera.html`)**
+- Check in with a name or stay anonymous, plus an optional email to receive their photos
+- Front/back camera, real back-camera **flash** on iPhone and Android (picks the lens wired to the LED; falls back to Chrome's flash-photo API, then a digital boost)
+- **Zoom** with the phone's own camera zoom when available (sharp, up to 8×), +/− buttons, pinch, and tap for 1×/2×/3×/5×
+- 20 filters — Bright, Vivid, Warm, Cool, Golden Hour, Soft Pink, Matte, Portra, Kodak Gold, Cinematic, Classic Chrome, Polaroid, Vintage, B&W, Noir, Duotone Red/Blue, Disposable Camera (+ Flash)
+- The saved photo matches the preview exactly (same crop, zoom and filter — including on older iPhones)
+- **Save to my phone** (Photos on iPhone via the share sheet, Gallery on Android) and **Post to wall**
+
+**Big screen (`display.html`)** — login required
+- Three rows of polaroid-style photos scrolling right to left; each tile follows its photo's own orientation (portrait/landscape), nothing cropped
+- Realtime updates, with polling every 8 s as a fallback
+- Faint floating mascot faces in the background
+- **Scan to Snap** QR card — move the mouse for the Hide/Show button, or press **Q**
+
+**Admin (`admin.html`)** — login required
+- Hide/show or delete photos, download everything as a ZIP
+- **Email photos to guests** — one email per guest with all their photos attached; already-emailed photos are marked, so it never sends duplicates
+
+**Demo mode** — add `?demo=1` to any page (e.g. `index.html?demo=1`, `display.html?demo=1`). Nothing is uploaded: photos go straight to the display in the same browser, and the wall opens without login.
+
+## Project structure
 
 ```
-snapwall/
-├── index.html          → check-in screen (name / anonymous)
-├── camera.html         → camera + color filters + shutter
-├── display.html         → big-screen ticker wall, auto-refreshing
-├── admin.html           → admin login + manage/delete photos
-├── style.css             → shared design tokens & styling
-├── supabase-client.js   → Supabase connection & helpers (FILL THIS IN!)
-└── schema.sql            → database & storage setup for Supabase
+index.html            check-in (name / anonymous / optional email)
+camera.html           camera, filters, flash, zoom, save & post
+display.html          big-screen live wall (login)
+admin.html            moderation, ZIP download, email guests (login)
+style.css             shared design tokens
+supabase-client.js    Supabase connection + helpers (+ demo mode)
+schema.sql            full database & storage setup (safe to re-run)
+supabase/functions/send-guest-photos/index.ts   Edge Function that sends the emails
+api/keepalive.js      daily ping so the free Supabase project never pauses
+vercel.json           schedules the daily keep-alive (Vercel Cron)
+mascots/              mascot images for the wall background
+qr-code.svg           QR to hapki-snap.vercel.app shown on the wall
+Logo Hapkido.png      logo used on the camera page
 ```
 
-## One-time setup
+## Setup
 
-### 1. Create a Supabase project
-Sign up / log in at https://supabase.com and create a new project.
+1. **Supabase project** — create one at https://supabase.com.
+2. **Database** — SQL Editor → New query → paste all of `schema.sql` → Run. It's safe to run again after updates.
+3. **Keys** — Settings → API: put the Project URL and the publishable (anon) key in `supabase-client.js` (and in `api/keepalive.js`, or set `SUPABASE_URL` / `SUPABASE_ANON_KEY` in Vercel).
+4. **Admin account** — Authentication → Users → Add user. This login opens `admin.html` and `display.html`.
+5. **Deploy** — import the GitHub repo into Vercel (HTTPS is required for the camera). The keep-alive cron is picked up from `vercel.json` automatically.
 
-### 2. Run schema.sql
-Open **SQL Editor** in the Supabase dashboard → New query → paste the entire contents of `schema.sql` → Run. This creates the `photos` table, its security policies, the `snapwall-photos` storage bucket, and enables Realtime on the table.
+### Email delivery (optional)
 
-### 3. Get your API key
-Open **Settings → API**, copy the `Project URL` and `anon public key`, then fill them into `supabase-client.js`:
-```js
-const SUPABASE_URL = "https://xxxxx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOi...";
-```
+1. On the Gmail account you'll send from, turn on 2-Step Verification and create an App Password at https://myaccount.google.com/apppasswords.
+2. Supabase → Edge Functions → Secrets:
+   - `GMAIL_USER` — the Gmail address
+   - `GMAIL_APP_PASSWORD` — the 16-character App Password
+   - `EVENT_NAME` — optional, shown in the email
+3. Edge Functions → Deploy a new function → Via Editor, name it `send-guest-photos`, paste `supabase/functions/send-guest-photos/index.ts`, deploy.
 
-### 4. Create an admin account
-Open **Authentication → Users → Add user**, set an email & password — that's what you'll use to sign in at `admin.html`.
+A personal Gmail account sends about 500 emails/day — plenty, since each guest gets one email.
 
-### 5. Run it locally
-The camera needs HTTPS or `localhost`, so serve the folder rather than double-clicking the files:
-```bash
-cd snapwall
-python3 -m http.server 8000
-```
-Then open:
-- `http://localhost:8000/index.html` — hand this to guests (or share via QR code)
-- `http://localhost:8000/display.html` — open on the big screen / projector / TV
-- `http://localhost:8000/admin.html` — for moderation
+## Before the event
 
-## Deploying
-
-Everything is static HTML/CSS/JS, so drag-and-drop the folder onto **Vercel** or **Netlify** (instant HTTPS, required for camera access on phones), or use **GitHub Pages**.
-
-## Color filters (20 total)
-
-Original, B&W, Noir, Warm, Cool, Vivid, Fade, Vintage, Golden Hour, Cyberpunk, Pastel, Infrared, Mono Blue, Sunset Glow, Neon Nights, Arctic Frost, Duotone Red, Duotone Blue, Dreamy Glow, Retro Film.
-
-The last several (Sunset Glow, Neon Nights, Arctic Frost, the two Duotones, Dreamy Glow, Retro Film) combine a base CSS color adjustment with a translucent color layer + CSS blend mode (`overlay`, `screen`, `soft-light`, `color`, `multiply`) — that's what gives the more Snapchat-like duotone/glow effects that a plain `filter()` alone can't produce. To add more, edit the `FILTERS` array in `camera.html`:
-```js
-{ label: 'Your Filter', css: 'saturate(1.2)', wash: 'rgba(255,0,0,0.3)', blend: 'overlay' }
-```
-`wash` and `blend` are optional — omit both for a plain color-adjustment filter.
-
-## The live wall (display.html): a rotating ring carousel
-
-Photos are arranged evenly around a single circle, viewed at a fixed tilt so the whole thing reads as an orbiting ring — like a Ferris wheel or carousel of photos — rather than a straight line or a full 3D sphere. Photos toward the front appear larger and fully bright; photos on the far side of the ring shrink and dim slightly, giving a sense of depth as it turns.
-
-This uses a **fixed set of 24 "slots"** positioned once around the ring — their positions never move. As new photos arrive, they're assigned round-robin into the next slot (replacing whatever was there before) with a quick brightness "pop" so they're easy to spot. This design is what fixed an earlier ticker-carousel bug where fast-arriving photos could visually glitch/overlap: since slots are fixed and only the *image inside* a slot changes, there's no more DOM insertion/removal racing with layout measurement on every frame.
-
-Fully responsive: the ring's radius and tile size are computed from the container's own measured width/height (`getBoundingClientRect`), recalculated on resize/orientation change — so it scales correctly on phones, tablets, monitors, or a TV without hard-coded breakpoints.
-
-Auto-refresh still has two layers:
-1. **Realtime** (instant) via Supabase — requires the `photos` table to have replication enabled, which `schema.sql` already includes.
-2. **Polling every 8 seconds** as a fallback in case realtime doesn't connect.
-
-Easy constants to tweak in `display.html`:
-```js
-const RING_COUNT = 24;      // how many photos are visible on the ring at once
-const ROTATE_SPEED = 0.28;  // spin speed, radians/second
-const TILT_ANGLE = 0.5;     // how tilted/elliptical the ring looks (0 = flat line, larger = rounder)
-```
-
-## How the photo flow works
-
-1. **index.html** — guest enters a name or picks anonymous, stored temporarily in `sessionStorage`
-2. **camera.html** — `getUserMedia` opens the camera (front by default, with a **Flip** button to switch to the back camera — only the front camera is mirrored, matching how a real camera app behaves); the chosen filter is applied live via CSS `filter` (plus an optional color-wash layer) and re-applied on the capture `<canvas>` so what you see is what gets sent; result becomes a JPEG `Blob`
-3. The blob uploads to **Supabase Storage** (`snapwall-photos` bucket); its public URL, username, and filter name are saved to the `photos` table
-4. **display.html** — fetches all `visible = true` photos, distributes them round-robin across the ticker rows, and subscribes to Realtime + polling so new photos join the ticker automatically
-5. **admin.html** — sign in with Supabase Auth, toggle photos hidden/shown on the wall, or delete them permanently (storage + database)
-
-## Emailing guests their photos (one email per guest)
-
-Guests can enter an email on the check-in page (optional). After the event, press **Email photos to guests** in `admin.html`: each guest gets **one email** with all of their photos attached (plus tap-to-open thumbnails). Photos already emailed are marked, so pressing the button again only sends new photos — never duplicates.
-
-Emails are stored in a separate `guests` table that the public can insert into but never read; `photos` only stores a `guest_id`.
-
-One-time setup:
-1. **SQL** — run `schema-email.sql` in the Supabase SQL Editor.
-2. **Gmail App Password** — on the Gmail account you'll send from, turn on 2-Step Verification, then create an App Password at https://myaccount.google.com/apppasswords (16 characters).
-3. **Secrets** — Supabase Dashboard → Edge Functions → Secrets, add:
-   - `GMAIL_USER` = the Gmail address
-   - `GMAIL_APP_PASSWORD` = the App Password (no spaces)
-   - `EVENT_NAME` = (optional) e.g. `Hapkido Open 2026`
-4. **Deploy the function** — Dashboard → Edge Functions → Deploy a new function → *Via Editor*, name it exactly `send-guest-photos`, paste `supabase/functions/send-guest-photos/index.ts`, deploy. (Or with the CLI: `supabase functions deploy send-guest-photos`.)
-
-Limits: a personal Gmail account can send roughly 500 emails/day. The function sends 15 guests per call and the admin page keeps calling until everyone is done.
-
-## Further customization
-- Change the "just landed" pop-in animation: edit `@keyframes freshpop` in `display.html`
-- Limit the name length: change `maxlength` on the input in `index.html`
-- Add automated moderation (face blur, content detection): would need a Supabase Edge Function — out of scope for this starter
+- Open the Supabase dashboard and take one test photo (a paused project means uploads fail; click **Restore** if needed).
+- Check https://hapki-snap.vercel.app/api/keepalive returns `"ok": true`.
+- Sign in on the display laptop once, and turn off sleep/screensaver.
+- Tell guests to open the link in **Chrome or Safari** — in-app browsers (WhatsApp, Instagram) often block the camera and flash.
+- Delete test photos from the admin page afterwards.
